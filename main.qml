@@ -11,14 +11,14 @@ Item {
         args: [ "run", "test.go" ]
 
         Component.onCompleted: {
-            myView.model = fuckMe.createObject(myView)
+            myView.model = listModelComponent.createObject(myView)
         }
     }
 
     // ### right now, BackendListModel will crash if it is created before the
     // BackendProcess has read metadata for models.
     Component {
-        id: fuckMe
+        id: listModelComponent
         BackendListModel {
             id: myData
             identifier: "main.Person"

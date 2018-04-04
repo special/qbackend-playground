@@ -62,7 +62,11 @@ void QBackendProcess::componentComplete()
     // because our roleNames must be complete *now*.
     m_process.waitForReadyRead();
     bool synced = false;
-    while (m_process.canReadLine()) {
+    while (!synced) {
+        while (!m_process.canReadLine()) {
+            // busy loop until we have a full line...
+            m_process.waitForReadyRead();
+        }
         QByteArray initBuf = m_process.readLine();
         initBuf.truncate(initBuf.length() - 1);
 
