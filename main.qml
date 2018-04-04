@@ -6,12 +6,28 @@ Item {
     width: 500
     height: 500
 
+    BackendProcess {
+        name: "go"
+        args: [ "run", "test.go" ]
+
+        Component.onCompleted: {
+            myView.model = fuckMe.createObject(myView)
+        }
+    }
+
+    // ### right now, BackendListModel will crash if it is created before the
+    // BackendProcess has read metadata for models.
+    Component {
+        id: fuckMe
+        BackendListModel {
+            id: myData
+            identifier: "main.Person"
+        }
+    }
+
     ListView {
         id: myView
         anchors.fill: parent
-        model: OutOfProcessDataRepo {
-            id: myData
-        }
         delegate: Item {
             height: col.height
             width: ListView.view.width

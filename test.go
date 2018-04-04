@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/satori/go.uuid"
 	"os"
 	"reflect"
 	"strconv"
@@ -25,12 +26,12 @@ func printRoles(v interface{}) {
 		roles = append(roles, val.Type().Field(i).Tag.Get("json"))
 	}
 
-	fmt.Println(fmt.Sprintf("ROLES %s", strings.Join(roles, " ")))
+	fmt.Println(fmt.Sprintf("MODEL %T %s", v, strings.Join(roles, " ")))
 }
 
 func printPerson(p Person) {
 	buf, _ := json.Marshal(p)
-	fmt.Println(fmt.Sprintf("APPEND %d", len(buf)))
+	fmt.Println(fmt.Sprintf("APPEND %T %s %d", p, uuid.NewV4(), len(buf)))
 	fmt.Println(fmt.Sprintf("%s", buf))
 }
 
@@ -78,7 +79,9 @@ func scanLinesOrBlock(data []byte, atEOF bool) (advance int, token []byte, err e
 }
 
 func main() {
+	fmt.Println("VERSION 1")
 	printRoles(Person{})
+	fmt.Println("SYNCED")
 
 	printPerson(Person{FirstName: "Robin", LastName: "Burchell", Age: 31})
 	printPerson(Person{FirstName: "Kamilla", LastName: "Bremeraunet", Age: 30})
