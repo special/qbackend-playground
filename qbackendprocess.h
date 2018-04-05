@@ -39,6 +39,8 @@ public:
     // Requests that the backend remove a given UUID.
     void remove(const QUuid& uuid);
 
+    void write(const QByteArray& data);
+
 signals:
     void nameChanged();
     void argsChanged();

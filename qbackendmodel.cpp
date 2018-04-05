@@ -3,11 +3,11 @@
 #include "qbackendmodel.h"
 #include "qbackendprocess.h"
 
-QBackendModel::QBackendModel(const QString& identifier, const QVector<QByteArray>& roleNames)
+QBackendModel::QBackendModel(QBackendProcess* connection, const QString& identifier, const QVector<QByteArray>& roleNames)
     : m_identifier(identifier)
+    , m_connection(connection)
     , m_roleNames(roleNames)
 {
-
 }
 
 QString QBackendModel::identifier() const
@@ -58,5 +58,21 @@ void QBackendModel::appendFromProcess(const QVector<QUuid>& uuids, const QVector
         m_data[uuids.at(i)] = datas.at(i);
     }
     emit added(uuids, datas);
+}
+
+void QBackendModel::removeFromProcess(const QVector<QUuid>& uuids)
+{
+    emit aboutToRemove(uuids);
+    for (int i = 0; i < uuids.length(); ++i) {
+        qDebug() << "Removing " << uuids.at(i);
+        m_data.remove(uuids.at(i));
+    }
+    emit removed(uuids);
+}
+
+void QBackendModel::write(const QByteArray& data)
+{
+    qWarning() << m_connection;
+    m_connection->write(data);
 }
 

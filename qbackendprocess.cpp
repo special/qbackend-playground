@@ -82,7 +82,7 @@ void QBackendProcess::componentComplete()
                 roleNames.append(modelData.at(i));
             }
 
-            QBackendRepository::setupModel(modelData.at(1), roleNames);
+            QBackendRepository::setupModel(this, modelData.at(1), roleNames);
         } else if (initBuf == "SYNCED") {
             qDebug() << "Initial sync done";
             synced = true;
@@ -115,7 +115,6 @@ void QBackendProcess::handleModelDataReady()
             // APPEND <model> <UUID> <len>
             QList<QByteArray> parts = cmdBuf.split(' ');
             Q_ASSERT(parts.length() == 4);
-            QString modelId = QString::fromUtf8(parts[1]); // ### use QByteArray consistently
             QUuid uuid = QUuid(parts[2]);
             int bytes = parts[3].toInt();
 
@@ -124,6 +123,7 @@ void QBackendProcess::handleModelDataReady()
 
             QJsonDocument doc = QJsonDocument::fromJson(cmdBuf);
             if (doc.isObject()) {
+                QString modelId = QString::fromUtf8(parts[1]); // ### use QByteArray consistently
                 QBackendModel *model = QBackendRepository::model(modelId);
                 QJsonObject obj = doc.object();
 
@@ -138,13 +138,22 @@ void QBackendProcess::handleModelDataReady()
                 Q_UNREACHABLE(); // consider isArray for appending in bulk
             }
         }
-#if 0
         else if (cmdBuf.startsWith("REMOVE ")) {
-            int rowId = QByteArray::fromRawData(cmdBuf.data() + 7, cmdBuf.length()-8).toInt();
-            beginRemoveRows(QModelIndex(), rowId, rowId);
-            m_data.remove(rowId);
-            endRemoveRows();
-        } else if (cmdBuf.startsWith("UPDATE ")) {
+            // First, remove the newline.
+            cmdBuf.truncate(cmdBuf.length() - 1);
+
+            // REMOVE <model> <UUID>
+            QList<QByteArray> parts = cmdBuf.split(' ');
+
+            Q_ASSERT(parts.length() == 3);
+
+            QString modelId = QString::fromUtf8(parts[1]); // ### use QByteArray consistently
+            QBackendModel *model = QBackendRepository::model(modelId);
+            QUuid uuid = QUuid(parts[2]);
+            model->removeFromProcess(QVector<QUuid>() << uuid);
+        }
+#if 0
+        else if (cmdBuf.startsWith("UPDATE ")) {
             // Determine length to read.
             // First, remove the newline.
             cmdBuf.truncate(cmdBuf.length() - 1);
@@ -190,13 +199,11 @@ void QBackendProcess::handleModelDataReady()
     }
 }
 
-/*
 void QBackendProcess::write(const QByteArray& data)
 {
     qWarning() << "Sending " << data;
     m_process.write(data);
 }
-*/
 
 // Requests that the backend add a new item.
 void QBackendProcess::add(const QUuid& uuid, const QVector<QVariant>& data)

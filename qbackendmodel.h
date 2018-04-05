@@ -46,6 +46,8 @@ public:
     // What data is in this model?
     QVector<QUuid> keys();
 
+    void write(const QByteArray& data);
+
 signals:
     void aboutToChange(const QVector<QUuid>& uuids, const QVector<QVector<QVariant>>& oldDatas, const QVector<QVector<QVariant>>& newDatas);
     void changed(const QVector<QUuid>& uuids, const QVector<QVector<QVariant>>& oldDatas, const QVector<QVector<QVariant>>& newDatas);
@@ -62,6 +64,7 @@ private:
 
     // connection API
     void appendFromProcess(const QVector<QUuid>& uuids, const QVector<QVector<QVariant>>& datas);
+    void removeFromProcess(const QVector<QUuid>& uuids);
     // end connection API
 
     QVector<QByteArray> m_roleNames;
@@ -69,6 +72,6 @@ private:
 
     friend class QBackendProcess;
     friend class QBackendRepository;
-    QBackendModel(const QString &identifier, const QVector<QByteArray>& roleNames);
+    QBackendModel(QBackendProcess* connection, const QString &identifier, const QVector<QByteArray>& roleNames);
 };
 

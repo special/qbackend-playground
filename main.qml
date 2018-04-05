@@ -6,12 +6,15 @@ Item {
     width: 500
     height: 500
 
+    property var myData
+
     BackendProcess {
         name: "go"
         args: [ "run", "test.go" ]
 
         Component.onCompleted: {
             myView.model = listModelComponent.createObject(myView)
+            myData = myView.model
         }
     }
 
@@ -55,7 +58,7 @@ Item {
                         text: "Remove"
 
                         onClicked: {
-                            myData.write("REMOVE " + index + "\n")
+                            myData.write("REMOVE main.Person " + model._uuid + "\n")
                         }
                     }
                 }
@@ -88,7 +91,7 @@ Item {
                             firstNameText.text = ""
                             lastNameText.text = ""
                             ageText.text = ""
-                            myData.write("UPDATE " + index + " " + (dat.length) + "\n")
+                            myData.write("UPDATE " + model._uuid + " " + (dat.length) + "\n")
                             myData.write(dat + "\n")
                         }
                     }

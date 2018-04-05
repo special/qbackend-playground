@@ -47,7 +47,16 @@ void QBackendListModel::onAboutToRemove(const QVector<QUuid>& uuids)
 
 void QBackendListModel::onRemoved(const QVector<QUuid>& uuids)
 {
+    for (const QUuid& uuid : uuids) {
+        int rowIdx = m_idMap.indexOf(uuid);
+        Q_ASSERT(rowIdx != -1);
 
+        // ### not performant with a lot of removes
+        qWarning() << "Removing " << uuid << " row ID " << rowIdx;
+        beginRemoveRows(QModelIndex(), rowIdx, rowIdx);
+        m_idMap.remove(rowIdx);
+        endRemoveRows();
+    }
 }
 
 void QBackendListModel::setIdentifier(const QString& id)
@@ -77,7 +86,9 @@ void QBackendListModel::setIdentifier(const QString& id)
         }
     }
 
-    qWarning() << "Set model " << m_model << " for identifier " << id << " ID map " << m_idMap;
+    m_roleNames[Qt::UserRole + m_roleNames.count()] = "_uuid";
+
+    qWarning() << "Set model " << m_model << " for identifier " << id << m_roleNames << " rows " << m_idMap.count();
     endResetModel();
 
     if (m_model) {
@@ -88,6 +99,11 @@ void QBackendListModel::setIdentifier(const QString& id)
         connect(m_model, &QBackendModel::aboutToRemove, this, &QBackendListModel::onAboutToRemove);
         connect(m_model, &QBackendModel::removed, this, &QBackendListModel::onRemoved);
     }
+}
+
+void QBackendListModel::write(const QByteArray& data)
+{
+    m_model->write(data);
 }
 
 QHash<int, QByteArray> QBackendListModel::roleNames() const
@@ -102,6 +118,11 @@ int QBackendListModel::rowCount(const QModelIndex&) const
 
 QVariant QBackendListModel::data(const QModelIndex &index, int role) const
 {
+    if (role == Qt::UserRole + m_roleNames.count() - 1) {
+        // uuid request
+        return m_idMap.at(index.row());
+    }
+
     return m_model->data(m_idMap.at(index.row())).at(role - Qt::UserRole);
 }
 

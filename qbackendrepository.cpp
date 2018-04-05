@@ -11,10 +11,10 @@ QBackendModel *QBackendRepository::model(const QString& identifier)
     return m_models[identifier];
 }
 
-void QBackendRepository::setupModel(const QString& identifier, const QVector<QByteArray>& roleNames)
+void QBackendRepository::setupModel(QBackendProcess* connection, const QString& identifier, const QVector<QByteArray>& roleNames)
 {
-    qWarning() << "Got data for model " << identifier << " role names " << roleNames;
+    qWarning() << "Got data for model " << identifier << " role names " << roleNames << " living on connection " << connection;
     Q_ASSERT(!m_models.contains(identifier));
-    m_models[identifier] = new QBackendModel(identifier, roleNames);
+    m_models[identifier] = new QBackendModel(connection, identifier, roleNames);
 }
 

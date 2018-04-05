@@ -15,6 +15,8 @@ public:
     QString identifier() const;
     void setIdentifier(const QString& identifier);
 
+    Q_INVOKABLE void write(const QByteArray& data);
+
 signals:
     void identifierChanged();
 
