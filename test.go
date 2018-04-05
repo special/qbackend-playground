@@ -12,6 +12,49 @@ import (
 	"strings"
 )
 
+// current protocol..
+// sent from us:
+//
+// VERSION 1
+// MODEL foo firstName lastName (obsolete now UI has roles its side)
+// SYNCED (ui blocks until this point, but this isn't really needed anymore)
+//
+// APPEND foo 9
+// (json data)
+// UPDATE foo 9
+// (json data)
+// REMOVE foo 9
+//
+//
+// sent to us:
+//
+// INVOKE foo method 9
+// (json data)
+// -- invoke method on object
+//
+// OINVOKE foo method id 9
+// (json data)
+// -- invoke method on object, sub-object
+//
+// what we ought to consider is a way that we can turn this into generic object
+// introduction:
+// OBJECT_CREATE foo
+// PROP_SET foo roleNames 9
+// (json data)
+// PROP_DEL foo roleNames
+// OBJECT_UPDATE (used to set a whole object at once -- or perhaps OBJECT_CREATE
+// can just overwrite?)
+// OBJECT_DELETE
+//
+// then, model members become just another set of objects..
+// if we also additionally add associations (parent/child) to OBJECT_CREATE,
+// we'd get models for free..?
+//
+// OBJECT_CREATE fooModel
+// OBJECT_CREATE fooChild fooModel
+// PROP_SET fooChild firstName 9
+// (json data)
+
 type Person struct {
 	FirstName string `json:"firstName"`
 	LastName  string `json:"lastName"`
