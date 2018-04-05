@@ -36,24 +36,46 @@ import (
 // (json data)
 // -- invoke method on object, sub-object
 //
-// what we ought to consider is a way that we can turn this into generic object
-// introduction:
-// OBJECT_CREATE foo
-// PROP_SET foo roleNames 9
-// (json data)
-// PROP_DEL foo roleNames
-// OBJECT_UPDATE (used to set a whole object at once -- or perhaps OBJECT_CREATE
-// can just overwrite?)
-// OBJECT_DELETE
+////////////////////////////////////////////////////////////////////////////
 //
-// then, model members become just another set of objects..
-// if we also additionally add associations (parent/child) to OBJECT_CREATE,
-// we'd get models for free..?
+// V2:
 //
-// OBJECT_CREATE fooModel
-// OBJECT_CREATE fooChild fooModel
-// PROP_SET fooChild firstName 9
-// (json data)
+// -> VERSION 2
+// -> OBJECT_CREATE foo
+// -> SYNC (no blocking needed now, this is just informational, for error // checking)
+// -> INVOKE foo append 9
+// -> (json)
+// -> INVOKE foo remove 9
+//
+// but how do we communicate UUID... it would then have to be part
+// of the JSON, but okay, perhaps that's fine as a model protocol requirement
+//
+// .....
+//
+// -> INVOKE foo random
+// ... if it's not a model-internal method, it can then be passed to QML etc to
+// handle. imagine:
+//
+// -> INVOKE foo fileTransferIncoming
+// (json)
+//
+// ... for notifications from the backend.
+//
+// So; with this setup, objects are top level "things" that are interacted with.
+// Think models in an application, or a settings object, or, ... -- we don't
+// codify any of their behaviour _at the protocol level_, instead, we just
+// define messages to introduce objects, destroy objects, and invoke methods on
+// them.
+//
+// ... and actually, the OBJECT_CREATE stuff is _probably_ not strictly speaking
+// necessary, at least not unless we want to complain about things like "you are
+// listening to a model that isn't published".
+//
+// The protocol for UI to backend would be virtually identical:
+// INVOKE foo addNew
+// INVOKE foo update...
+//
+// all of the logic for these would be left to the object itself.
 
 type Person struct {
 	FirstName string `json:"firstName"`
