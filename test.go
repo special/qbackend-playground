@@ -41,41 +41,45 @@ import (
 // V2:
 //
 // -> VERSION 2
-// -> OBJECT_CREATE foo
-// -> SYNC (no blocking needed now, this is just informational, for error // checking)
-// -> INVOKE foo append 9
+// -> OBJECT_CREATE <uuid>
+// -> OBJECT_REGISTER <uuid> foo // register the uuid with this name for lookup
+// -> SYNC (no blocking needed now, this is just informational, for error checking)
+// -> INVOKE <uuid> append 9
 // -> (json)
-// -> INVOKE foo remove 9
-//
-// but how do we communicate UUID... it would then have to be part
-// of the JSON, but okay, perhaps that's fine as a model protocol requirement
+// -> INVOKE <uuid> remove 9
 //
 // .....
 //
-// -> INVOKE foo random
+// -> INVOKE <uuid> random 9
 // ... if it's not a model-internal method, it can then be passed to QML etc to
 // handle. imagine:
 //
-// -> INVOKE foo fileTransferIncoming
+// -> INVOKE <uuid> fileTransferIncoming 9
 // (json)
 //
 // ... for notifications from the backend.
 //
-// So; with this setup, objects are top level "things" that are interacted with.
-// Think models in an application, or a settings object, or, ... -- we don't
+// Here, everything is an object. Objects that the system might want to interact
+// with as a "top level" item of interest are registered with a name so that
+// they might be found: think of models, or settings objects, ... -- we don't
 // codify any of their behaviour _at the protocol level_, instead, we just
 // define messages to introduce objects, destroy objects, and invoke methods on
 // them.
 //
-// ... and actually, the OBJECT_CREATE stuff is _probably_ not strictly speaking
-// necessary, at least not unless we want to complain about things like "you are
-// listening to a model that isn't published".
-//
 // The protocol for UI to backend would be virtually identical:
-// INVOKE foo addNew
-// INVOKE foo update...
+// INVOKE <uuid> addNew
+// INVOKE <uuid> update...
 //
 // all of the logic for these would be left to the object itself.
+//
+// Messages:
+// VERSION 2
+// OBJECT_CREATE
+// OBJECT_UPDATE
+// OBJECT_REGISTER
+// OBJECT_DESTROY
+// SYNC
+// INVOKE
 
 type Person struct {
 	FirstName string `json:"firstName"`
