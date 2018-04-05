@@ -1,7 +1,6 @@
 #include <iostream>
 
 #include <QDebug>
-
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -118,10 +117,16 @@ void QBackendProcess::handleModelDataReady()
             QList<QByteArray> parts = cmdBuf.split(' ');
             Q_ASSERT(parts.length() == 4);
             QUuid uuid = QUuid(parts[2]);
-            int bytes = parts[3].toInt();
+            int byteCnt = parts[3].toInt();
 
             // Read JSON data
-            cmdBuf = m_process.read(bytes);
+            cmdBuf.clear();
+            while (cmdBuf.length() < byteCnt) {
+                qDebug() << "Want " << byteCnt << " bytes, have " << cmdBuf.length();
+                m_process.waitForReadyRead(10);
+                cmdBuf += m_process.read(byteCnt - cmdBuf.length());
+            }
+            Q_ASSERT(cmdBuf.length() == byteCnt);
 
             QJsonDocument doc = QJsonDocument::fromJson(cmdBuf);
             if (doc.isObject()) {
@@ -134,7 +139,7 @@ void QBackendProcess::handleModelDataReady()
                 for (const QByteArray& role : model->roleNames()) {
                     data.append(obj.value(role).toVariant());
                 }
-                qDebug() << "Read APPEND " << uuid << " into " << modelId << " len " << bytes << cmdBuf;
+                qDebug() << "Processing APPEND " << uuid << " into " << modelId << " len " << byteCnt << cmdBuf;
                 model->appendFromProcess(QVector<QUuid>() << uuid, QVector<QVector<QVariant>>() << data);
             } else {
                 Q_UNREACHABLE(); // consider isArray for appending in bulk
@@ -165,10 +170,16 @@ void QBackendProcess::handleModelDataReady()
             QBackendModel *model = QBackendRepository::model(modelId);
             QUuid uuid = QUuid(parts[2]);
 
-            int bytes = parts[3].toInt();
+            int byteCnt = parts[3].toInt();
 
             // Read JSON data
-            cmdBuf = m_process.read(bytes);
+            cmdBuf.clear();
+            while (cmdBuf.length() < byteCnt) {
+                qDebug() << "Want " << byteCnt << " bytes, have " << cmdBuf.length();
+                m_process.waitForReadyRead(10);
+                cmdBuf += m_process.read(byteCnt - cmdBuf.length());
+            }
+            Q_ASSERT(cmdBuf.length() == byteCnt);
 
             QJsonDocument doc = QJsonDocument::fromJson(cmdBuf);
             if (doc.isObject()) {
@@ -181,56 +192,12 @@ void QBackendProcess::handleModelDataReady()
                 for (const QByteArray& role : model->roleNames()) {
                     data.append(obj.value(role).toVariant());
                 }
-                qDebug() << "Read APPEND " << uuid << " into " << modelId << " len " << bytes << cmdBuf;
+                qDebug() << "Processing UPDATE " << uuid << " into " << modelId << " len " << byteCnt << cmdBuf;
                 model->updateFromProcess(QVector<QUuid>() << uuid, QVector<QVector<QVariant>>() << data);
             } else {
                 Q_UNREACHABLE(); // consider isArray for appending in bulk
             }
         }
-#if 0
-        else if (cmdBuf.startsWith("UPDATE ")) {
-            // Determine length to read.
-            // First, remove the newline.
-            cmdBuf.truncate(cmdBuf.length() - 1);
-            QList<QByteArray> parts = cmdBuf.split(' ');
-            Q_ASSERT(parts.length() == 2);
-            int rowId = parts[1].toInt();
-            int bytes = parts[2].toInt();
-
-            // Read JSON data
-            cmdBuf = m_process.read(bytes);
-
-            qWarning() << "Updating " << rowId;
-
-            QJsonDocument doc = QJsonDocument::fromJson(cmdBuf);
-            Q_ASSERT(doc.isObject());
-            QJsonObject obj = doc.object();
-
-            QVector<QVariant> data;
-            QVector<int> roles;
-            int i = 0;
-
-            for (const QByteArray& role : m_roleNamesInOrder) {
-                QJsonValue val = obj.value(role);
-                if (val == QJsonValue::Undefined) {
-                    i++;
-                    continue;
-                }
-
-                qWarning() << "Changed data for " << rowId << role << " to " << val.toVariant();
-                m_data[rowId][i] = val.toVariant();
-                roles.append(i + Qt::UserRole);
-                i++;
-            }
-
-
-            dataChanged(index(rowId, 0), index(rowId, 0), roles);
-        } else if (cmdBuf.startsWith("DEBUG ")) {
-            qDebug() << "Debug! " << cmdBuf;
-        } else {
-            Q_UNREACHABLE();
-        }
-#endif
     }
 }
 

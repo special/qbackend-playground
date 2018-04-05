@@ -88,6 +88,7 @@ func main() {
 
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Split(scanLinesOrBlock)
+
 	for scanner.Scan() {
 		line := scanner.Text()
 		fmt.Println(fmt.Sprintf("DEBUG %s", line))
@@ -132,8 +133,7 @@ func main() {
 					fmt.Println(fmt.Sprintf("REMOVE main.Person %s", parts[3]))
 				} else if parts[2] == "update" {
 					fmt.Println(fmt.Sprintf("UPDATE main.Person %s %d", parts[3], len(jsonBlob)))
-					fmt.Println(fmt.Sprintf("%s", jsonBlob))
-
+					fmt.Println(jsonBlob)
 				}
 			}
 		}
