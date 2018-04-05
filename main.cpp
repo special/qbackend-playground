@@ -10,6 +10,7 @@ int main(int argc, char **argv) {
     qmlRegisterType<QBackendProcess>("com.me", 1, 0, "BackendProcess");
     qmlRegisterType<QBackendListModel>("com.me", 1, 0, "BackendListModel");
     QQuickView view(QUrl::fromLocalFile("main.qml"));
+    view.setResizeMode(QQuickView::SizeRootObjectToView);
     view.show();
     return app.exec();
 }

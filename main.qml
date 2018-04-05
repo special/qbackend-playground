@@ -4,7 +4,7 @@ import com.me 1.0
 
 Item {
     width: 500
-    height: 500
+    height: 800
 
     property var myData
 
@@ -30,7 +30,9 @@ Item {
 
     ListView {
         id: myView
-        anchors.fill: parent
+        width: parent.width
+        anchors.top: parent.top
+        anchors.bottom: bottomRow.top
         delegate: Item {
             height: col.height
             width: ListView.view.width
@@ -100,27 +102,16 @@ Item {
     }
 
     Row {
+        id: bottomRow
         anchors.bottom: parent.bottom
         width: parent.width
 
-        Rectangle {
+        Button {
             height: childrenRect.height * 1.5
             width: parent.width
-            color: "green"
-
-            Label {
-                text: "Add"
-                color: "white"
-                anchors.horizontalCenter: parent.horizontalCenter
-                font.pixelSize: 30
-                y: height/2
-            }
-
-            MouseArea {
-                anchors.fill: parent
-                onClicked: {
-                    myData.invokeMethod("addNew")
-                }
+            text: "Add"
+            onClicked: {
+                myData.invokeMethod("addNew")
             }
         }
     }
