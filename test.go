@@ -51,7 +51,7 @@ func dropCR(data []byte) []byte {
 // Hack to make Scanner give us line by line data, or a block of byteCnt bytes.
 func scanLinesOrBlock(data []byte, atEOF bool) (advance int, token []byte, err error) {
 	if scanningForDataLength {
-		fmt.Printf("DEBUG read %d bytes wanted %d\n", len(data), byteCnt)
+		//fmt.Printf("DEBUG read %d bytes wanted %d\n", len(data), byteCnt)
 		if len(data) < int(byteCnt) {
 			return 0, nil, nil
 		}
@@ -90,25 +90,52 @@ func main() {
 	scanner.Split(scanLinesOrBlock)
 	for scanner.Scan() {
 		line := scanner.Text()
-		if line == "ADDNEW" {
-			printPerson(Person{FirstName: "Another", LastName: "Person", Age: 15 + personCount})
-			personCount++
-		} else if strings.HasPrefix(line, "REMOVE ") {
-			fmt.Println(fmt.Sprintf("REMOVE %s", line[7:]))
-		} else if strings.HasPrefix(line, "UPDATE ") {
-			// Find the number of bytes we want
+		fmt.Println(fmt.Sprintf("DEBUG %s", line))
+		if strings.HasPrefix(line, "INVOKE ") {
+			// INVOKE objIdentifier method len
 			parts := strings.Split(line, " ")
-			byteCnt, _ = strconv.ParseInt(parts[2], 10, 32)
+			if len(parts) < 4 {
+				continue
+			}
+
+			if parts[1] == "main.Person" {
+				if parts[2] == "addNew" {
+					printPerson(Person{FirstName: "Another", LastName: "Person", Age: 15 + personCount})
+					personCount++
+				}
+			}
+
+			// Skip the JSON blob
+			byteCnt, _ = strconv.ParseInt(parts[3], 10, 32)
+
+			scanningForDataLength = true
+			scanner.Scan()
+			scanningForDataLength = false
+		} else if strings.HasPrefix(line, "OINVOKE ") {
+			// INVOKE objIdentifier method uuid len
+			parts := strings.Split(line, " ")
+			if len(parts) < 5 {
+				continue
+			}
+
+			// Read the JSON blob
+			byteCnt, _ = strconv.ParseInt(parts[3], 10, 32)
 
 			scanningForDataLength = true
 			scanner.Scan()
 			scanningForDataLength = false
 
-			msg := scanner.Text()
+			jsonBlob := scanner.Text()
 
-			fmt.Println(fmt.Sprintf("UPDATE %s", line[7:]))
-			fmt.Println(fmt.Sprintf("%s", msg))
+			if parts[1] == "main.Person" {
+				if parts[2] == "remove" {
+					fmt.Println(fmt.Sprintf("REMOVE main.Person %s", parts[3]))
+				} else if parts[2] == "update" {
+					fmt.Println(fmt.Sprintf("UPDATE main.Person %s %d", parts[3], len(jsonBlob)))
+					fmt.Println(fmt.Sprintf("%s", jsonBlob))
+
+				}
+			}
 		}
-		fmt.Println(fmt.Sprintf("DEBUG %s", line))
 	}
 }

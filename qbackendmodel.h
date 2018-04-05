@@ -32,25 +32,16 @@ public:
     // The data is stored in the order of 'roleNames'.
     QVector<QVariant> data(const QUuid& uuid);
 
-    // Requests that the backend add a new item.
-    QUuid add(const QVector<QVariant>& data);
-
-    // Requests that the backend set the data for a given UUID.
-    void set(const QUuid& uuid, const QByteArray& role, const QVariant& data);
-    // ### consider QVector<role> QVector<data> for whole object replacement
-    // ### also perhaps QVector<QUuid> for batch replacement
-
-    // Requests that the backend remove a given UUID.
-    void remove(const QUuid& uuid);
-
     // What data is in this model?
     QVector<QUuid> keys();
 
+    void invokeMethod(const QString& method, const QByteArray& jsonData);
+    void invokeMethodOnObject(const QUuid& uuid, const QString& method, const QByteArray& jsonData);
     void write(const QByteArray& data);
 
 signals:
-    void aboutToChange(const QVector<QUuid>& uuids, const QVector<QVector<QVariant>>& oldDatas, const QVector<QVector<QVariant>>& newDatas);
-    void changed(const QVector<QUuid>& uuids, const QVector<QVector<QVariant>>& oldDatas, const QVector<QVector<QVariant>>& newDatas);
+    void aboutToUpdate(const QVector<QUuid>& uuids, const QVector<QVector<QVariant>>& oldDatas, const QVector<QVector<QVariant>>& newDatas);
+    void updated(const QVector<QUuid>& uuids, const QVector<QVector<QVariant>>& oldDatas, const QVector<QVector<QVariant>>& newDatas);
     void aboutToAdd(const QVector<QUuid>& uuids, const QVector<QVector<QVariant>>& datas);
     void added(const QVector<QUuid>& uuids, const QVector<QVector<QVariant>>& datas);
     void aboutToRemove(const QVector<QUuid>& uuids);
@@ -65,6 +56,7 @@ private:
     // connection API
     void appendFromProcess(const QVector<QUuid>& uuids, const QVector<QVector<QVariant>>& datas);
     void removeFromProcess(const QVector<QUuid>& uuids);
+    void updateFromProcess(const QVector<QUuid>& uuids, const QVector<QVector<QVariant>>& datas);
     // end connection API
 
     QVector<QByteArray> m_roleNames;

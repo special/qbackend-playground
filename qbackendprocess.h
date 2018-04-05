@@ -28,17 +28,8 @@ protected:
 
 public:
     // #### these eventually should be in a base class
-    // Requests that the backend add a new item.
-    void add(const QUuid& uuid, const QVector<QVariant>& data);
-
-    // #### these eventually should be in a base class
-    // Requests that the backend set the data for a given UUID.
-    void set(const QUuid& uuid, const QByteArray& role, const QVariant& data);
-
-    // #### these eventually should be in a base class
-    // Requests that the backend remove a given UUID.
-    void remove(const QUuid& uuid);
-
+    void invokeMethod(const QString& identifier, const QString& method, const QByteArray& jsonData);
+    void invokeMethodOnObject(const QString& identifier, const QUuid& uuid, const QString& method, const QByteArray& jsonData);
     void write(const QByteArray& data);
 
 signals:

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QAbstractListModel>
+#include <QJSValue>
 #include <QUuid>
 
 class QBackendModel;
@@ -15,7 +16,8 @@ public:
     QString identifier() const;
     void setIdentifier(const QString& identifier);
 
-    Q_INVOKABLE void write(const QByteArray& data);
+    Q_INVOKABLE void invokeMethod(const QString& method, const QJSValue& data = QJSValue());
+    Q_INVOKABLE void invokeMethodOnRow(int index, const QString& method, const QJSValue& data = QJSValue());
 
 signals:
     void identifierChanged();
@@ -26,8 +28,8 @@ protected:
     QVariant data(const QModelIndex &index, int role) const override;
 
 private slots:
-    void onAboutToChange(const QVector<QUuid>& uuid, const QVector<QVector<QVariant>>& oldData, const QVector<QVector<QVariant>>& newData);
-    void onChanged(const QVector<QUuid>& uuid, const QVector<QVector<QVariant>>& oldData, const QVector<QVector<QVariant>>& newData);
+    void onAboutToUpdate(const QVector<QUuid>& uuid, const QVector<QVector<QVariant>>& oldData, const QVector<QVector<QVariant>>& newData);
+    void onUpdated(const QVector<QUuid>& uuid, const QVector<QVector<QVariant>>& oldData, const QVector<QVector<QVariant>>& newData);
     void onAboutToAdd(const QVector<QUuid>& uuid, const QVector<QVector<QVariant>>& data);
     void onAdded(const QVector<QUuid>& uuid, const QVector<QVector<QVariant>>& data);
     void onAboutToRemove(const QVector<QUuid>& uuid);

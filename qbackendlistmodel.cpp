@@ -1,4 +1,6 @@
+#include <iostream>
 #include <QDebug>
+#include <QQmlEngine>
 
 #include "qbackendlistmodel.h"
 #include "qbackendrepository.h"
@@ -14,14 +16,19 @@ QString QBackendListModel::identifier() const
     return m_identifier;
 }
 
-void QBackendListModel::onAboutToChange(const QVector<QUuid>& uuids, const QVector<QVector<QVariant>>& oldDatas, const QVector<QVector<QVariant>>& newDatas)
+void QBackendListModel::onAboutToUpdate(const QVector<QUuid>& uuids, const QVector<QVector<QVariant>>& oldDatas, const QVector<QVector<QVariant>>& newDatas)
 {
-
 }
 
-void QBackendListModel::onChanged(const QVector<QUuid>& uuids, const QVector<QVector<QVariant>>& oldDatas, const QVector<QVector<QVariant>>& newDatas)
+void QBackendListModel::onUpdated(const QVector<QUuid>& uuids, const QVector<QVector<QVariant>>& oldDatas, const QVector<QVector<QVariant>>& newDatas)
 {
-
+    // ### coalesce updates where possible
+    for (const QUuid& uuid : uuids) {
+        qWarning() << "Updating " << uuid;
+        int rowIdx = m_idMap.indexOf(uuid);
+        Q_ASSERT(rowIdx != -1);
+        emit dataChanged(index(rowIdx, 0), index(rowIdx, 0));
+    }
 }
 
 void QBackendListModel::onAboutToAdd(const QVector<QUuid>& uuids, const QVector<QVector<QVariant>>& datas)
@@ -33,7 +40,7 @@ void QBackendListModel::onAdded(const QVector<QUuid>& uuids, const QVector<QVect
 {
     beginInsertRows(QModelIndex(), m_idMap.size(), m_idMap.size() + uuids.length() - 1);
     for (const QUuid& uuid : uuids) {
-    qWarning() << "APpending " << uuid;
+        qWarning() << "Appending " << uuid;
         Q_ASSERT(!m_idMap.contains(uuid));
         m_idMap.append(uuid);
     }
@@ -62,8 +69,8 @@ void QBackendListModel::onRemoved(const QVector<QUuid>& uuids)
 void QBackendListModel::setIdentifier(const QString& id)
 {
     if (m_model) {
-        disconnect(m_model, &QBackendModel::aboutToChange, this, &QBackendListModel::onAboutToChange);
-        disconnect(m_model, &QBackendModel::changed, this, &QBackendListModel::onChanged);
+        disconnect(m_model, &QBackendModel::aboutToUpdate, this, &QBackendListModel::onAboutToUpdate);
+        disconnect(m_model, &QBackendModel::updated, this, &QBackendListModel::onUpdated);
         disconnect(m_model, &QBackendModel::aboutToAdd, this, &QBackendListModel::onAboutToAdd);
         disconnect(m_model, &QBackendModel::added, this, &QBackendListModel::onAdded);
         disconnect(m_model, &QBackendModel::aboutToRemove, this, &QBackendListModel::onAboutToRemove);
@@ -92,8 +99,8 @@ void QBackendListModel::setIdentifier(const QString& id)
     endResetModel();
 
     if (m_model) {
-        connect(m_model, &QBackendModel::aboutToChange, this, &QBackendListModel::onAboutToChange);
-        connect(m_model, &QBackendModel::changed, this, &QBackendListModel::onChanged);
+        connect(m_model, &QBackendModel::aboutToUpdate, this, &QBackendListModel::onAboutToUpdate);
+        connect(m_model, &QBackendModel::updated, this, &QBackendListModel::onUpdated);
         connect(m_model, &QBackendModel::aboutToAdd, this, &QBackendListModel::onAboutToAdd);
         connect(m_model, &QBackendModel::added, this, &QBackendListModel::onAdded);
         connect(m_model, &QBackendModel::aboutToRemove, this, &QBackendListModel::onAboutToRemove);
@@ -101,9 +108,24 @@ void QBackendListModel::setIdentifier(const QString& id)
     }
 }
 
-void QBackendListModel::write(const QByteArray& data)
+void QBackendListModel::invokeMethod(const QString& method, const QJSValue& data)
 {
-    m_model->write(data);
+    QJSEngine *engine = qmlEngine(this);
+    QJSValue global = engine->globalObject();
+    QJSValue json = global.property("JSON");
+    QJSValue stringify = json.property("stringify");
+    QJSValue jsonData = stringify.call(QList<QJSValue>() << data);
+    m_model->invokeMethod(method, jsonData.toString().toUtf8());
+}
+
+void QBackendListModel::invokeMethodOnRow(int index, const QString& method, const QJSValue& data)
+{
+    QJSEngine *engine = qmlEngine(this);
+    QJSValue global = engine->globalObject();
+    QJSValue json = global.property("JSON");
+    QJSValue stringify = json.property("stringify");
+    QJSValue jsonData = stringify.call(QList<QJSValue>() << data);
+    m_model->invokeMethodOnObject(m_idMap.at(index), method, jsonData.toString().toUtf8());
 }
 
 QHash<int, QByteArray> QBackendListModel::roleNames() const

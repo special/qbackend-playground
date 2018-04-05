@@ -58,7 +58,7 @@ Item {
                         text: "Remove"
 
                         onClicked: {
-                            myData.write("REMOVE main.Person " + model._uuid + "\n")
+                            myData.invokeMethodOnRow(index, "remove")
                         }
                     }
                 }
@@ -87,12 +87,11 @@ Item {
                     Button {
                         text: "Update"
                         onClicked: {
-                            var dat = JSON.stringify({firstName: firstNameText.text, lastName: lastNameText.text, age: ageText.text})
+                            var dat = {firstName: firstNameText.text, lastName: lastNameText.text, age: ageText.text}
+                            myData.invokeMethodOnRow(index, "update", dat)
                             firstNameText.text = ""
                             lastNameText.text = ""
                             ageText.text = ""
-                            myData.write("UPDATE " + model._uuid + " " + (dat.length) + "\n")
-                            myData.write(dat + "\n")
                         }
                     }
                 }
@@ -120,7 +119,7 @@ Item {
             MouseArea {
                 anchors.fill: parent
                 onClicked: {
-                    myData.write("ADDNEW\n")
+                    myData.invokeMethod("addNew")
                 }
             }
         }

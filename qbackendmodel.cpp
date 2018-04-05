@@ -25,23 +25,6 @@ QVector<QVariant> QBackendModel::data(const QUuid& uuid)
     return m_data[uuid];
 }
 
-QUuid QBackendModel::add(const QVector<QVariant>& data)
-{
-    QUuid id = QUuid::createUuid();
-    m_connection->add(id, data);
-    return id;
-}
-
-void QBackendModel::set(const QUuid& uuid, const QByteArray& role, const QVariant& data)
-{
-    m_connection->set(uuid, role, data);
-}
-
-void QBackendModel::remove(const QUuid& uuid)
-{
-    m_connection->remove(uuid);
-}
-
 QVector<QUuid> QBackendModel::keys()
 {
     // yeah... yeah.
@@ -60,6 +43,26 @@ void QBackendModel::appendFromProcess(const QVector<QUuid>& uuids, const QVector
     emit added(uuids, datas);
 }
 
+void QBackendModel::updateFromProcess(const QVector<QUuid>& uuids, const QVector<QVector<QVariant>>& datas)
+{
+    Q_ASSERT(uuids.length() == datas.length());
+
+    // ### do we need the old data? inefficient...
+    QVector<QVector<QVariant>> oldDatas;
+    oldDatas.reserve(datas.size());
+
+    for (const QUuid& uuid : uuids) {
+        oldDatas.append(m_data[uuid]);
+    }
+
+    emit aboutToUpdate(uuids, oldDatas, datas);
+    for (int i = 0; i < uuids.length(); ++i) {
+        qDebug() << "Updating " << uuids.at(i) << datas.at(i);
+        m_data[uuids.at(i)] = datas.at(i);
+    }
+    emit updated(uuids, oldDatas, datas);
+}
+
 void QBackendModel::removeFromProcess(const QVector<QUuid>& uuids)
 {
     emit aboutToRemove(uuids);
@@ -68,6 +71,16 @@ void QBackendModel::removeFromProcess(const QVector<QUuid>& uuids)
         m_data.remove(uuids.at(i));
     }
     emit removed(uuids);
+}
+
+void QBackendModel::invokeMethod(const QString& method, const QByteArray& jsonData)
+{
+    m_connection->invokeMethod(m_identifier, method, jsonData);
+}
+
+void QBackendModel::invokeMethodOnObject(const QUuid& uuid, const QString& method, const QByteArray& jsonData)
+{
+    m_connection->invokeMethodOnObject(m_identifier, uuid, method, jsonData);
 }
 
 void QBackendModel::write(const QByteArray& data)

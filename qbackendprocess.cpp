@@ -1,3 +1,5 @@
+#include <iostream>
+
 #include <QDebug>
 
 #include <QJsonDocument>
@@ -107,7 +109,7 @@ void QBackendProcess::handleModelDataReady()
             continue;
         }
 
-        qDebug() << "Read " << cmdBuf;
+        std::cout << "Read " << cmdBuf.data() << std::endl;
         if (cmdBuf.startsWith("APPEND ")) {
             // First, remove the newline.
             cmdBuf.truncate(cmdBuf.length() - 1);
@@ -137,8 +139,7 @@ void QBackendProcess::handleModelDataReady()
             } else {
                 Q_UNREACHABLE(); // consider isArray for appending in bulk
             }
-        }
-        else if (cmdBuf.startsWith("REMOVE ")) {
+        } else if (cmdBuf.startsWith("REMOVE ")) {
             // First, remove the newline.
             cmdBuf.truncate(cmdBuf.length() - 1);
 
@@ -151,6 +152,40 @@ void QBackendProcess::handleModelDataReady()
             QBackendModel *model = QBackendRepository::model(modelId);
             QUuid uuid = QUuid(parts[2]);
             model->removeFromProcess(QVector<QUuid>() << uuid);
+        } else if (cmdBuf.startsWith("UPDATE ")) {
+            // First, remove the newline.
+            cmdBuf.truncate(cmdBuf.length() - 1);
+
+            // UPDATE <model> <UUID> <len>
+            QList<QByteArray> parts = cmdBuf.split(' ');
+
+            Q_ASSERT(parts.length() == 3);
+
+            QString modelId = QString::fromUtf8(parts[1]); // ### use QByteArray consistently
+            QBackendModel *model = QBackendRepository::model(modelId);
+            QUuid uuid = QUuid(parts[2]);
+
+            int bytes = parts[3].toInt();
+
+            // Read JSON data
+            cmdBuf = m_process.read(bytes);
+
+            QJsonDocument doc = QJsonDocument::fromJson(cmdBuf);
+            if (doc.isObject()) {
+                QString modelId = QString::fromUtf8(parts[1]); // ### use QByteArray consistently
+                QBackendModel *model = QBackendRepository::model(modelId);
+                QJsonObject obj = doc.object();
+
+                QVector<QVariant> data;
+
+                for (const QByteArray& role : model->roleNames()) {
+                    data.append(obj.value(role).toVariant());
+                }
+                qDebug() << "Read APPEND " << uuid << " into " << modelId << " len " << bytes << cmdBuf;
+                model->updateFromProcess(QVector<QUuid>() << uuid, QVector<QVector<QVariant>>() << data);
+            } else {
+                Q_UNREACHABLE(); // consider isArray for appending in bulk
+            }
         }
 #if 0
         else if (cmdBuf.startsWith("UPDATE ")) {
@@ -201,25 +236,28 @@ void QBackendProcess::handleModelDataReady()
 
 void QBackendProcess::write(const QByteArray& data)
 {
-    qWarning() << "Sending " << data;
+    if (data != "\n") {
+        std::cout << "Sending " << data.data();
+    }
+    if (data[data.length() - 1] != '\n') {
+        std::cout << std::endl;
+    }
     m_process.write(data);
 }
 
-// Requests that the backend add a new item.
-void QBackendProcess::add(const QUuid& uuid, const QVector<QVariant>& data)
+void QBackendProcess::invokeMethod(const QString& identifier, const QString& method, const QByteArray& jsonData)
 {
-
+    QString data = "INVOKE " + identifier + " " + method + " " + QString::number(jsonData.length()) + "\n";
+    write(data.toUtf8());
+    write(jsonData);
+    write("\n");
 }
 
-// Requests that the backend set the data for a given UUID.
-void QBackendProcess::set(const QUuid& uuid, const QByteArray& role, const QVariant& data)
+void QBackendProcess::invokeMethodOnObject(const QString& identifier, const QUuid& id, const QString& method, const QByteArray& jsonData)
 {
-
-}
-
-// Requests that the backend remove a given UUID.
-void QBackendProcess::remove(const QUuid& uuid)
-{
-
+    QString data = "OINVOKE " + identifier + " " + method + " " + id.toByteArray() + " " + QString::number(jsonData.length()) + "\n";
+    write(data.toUtf8());
+    write(jsonData);
+    write("\n");
 }
 
