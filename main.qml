@@ -6,26 +6,10 @@ Item {
     width: 500
     height: 800
 
-    property var myData
-
     BackendProcess {
+        id: backendProcess
         name: "go"
         args: [ "run", "test.go" ]
-
-        Component.onCompleted: {
-            myView.model = listModelComponent.createObject(myView)
-            myData = myView.model
-        }
-    }
-
-    // ### right now, BackendListModel will crash if it is created before the
-    // BackendProcess has read metadata for models.
-    Component {
-        id: listModelComponent
-        BackendListModel {
-            id: myData
-            identifier: "main.Person"
-        }
     }
 
     ListView {
@@ -33,6 +17,12 @@ Item {
         width: parent.width
         anchors.top: parent.top
         anchors.bottom: bottomRow.top
+        model: BackendListModel {
+            id: myData
+            connection: backendProcess
+            identifier: "main.Person"
+            roles: [ "firstName", "lastName", "age" ]
+        }
         delegate: Item {
             height: col.height
             width: ListView.view.width

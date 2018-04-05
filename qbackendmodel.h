@@ -25,12 +25,11 @@ class QBackendModel : public QObject
 public:
     QString identifier() const;
 
-    // What data is in this model?
-    QVector<QByteArray> roleNames() const;
+    // ### consider interning these and using int keys
+    typedef QMap<QByteArray, QVariant> QBackendRowData;
 
     // Fetch the data for a given UUID.
-    // The data is stored in the order of 'roleNames'.
-    QVector<QVariant> data(const QUuid& uuid);
+    QBackendRowData data(const QUuid& uuid);
 
     // What data is in this model?
     QVector<QUuid> keys();
@@ -40,10 +39,10 @@ public:
     void write(const QByteArray& data);
 
 signals:
-    void aboutToUpdate(const QVector<QUuid>& uuids, const QVector<QVector<QVariant>>& oldDatas, const QVector<QVector<QVariant>>& newDatas);
-    void updated(const QVector<QUuid>& uuids, const QVector<QVector<QVariant>>& oldDatas, const QVector<QVector<QVariant>>& newDatas);
-    void aboutToAdd(const QVector<QUuid>& uuids, const QVector<QVector<QVariant>>& datas);
-    void added(const QVector<QUuid>& uuids, const QVector<QVector<QVariant>>& datas);
+    void aboutToUpdate(const QVector<QUuid>& uuids, const QVector<QBackendRowData>& oldDatas, const QVector<QBackendRowData>& newDatas);
+    void updated(const QVector<QUuid>& uuids, const QVector<QBackendRowData>& oldDatas, const QVector<QBackendRowData>& newDatas);
+    void aboutToAdd(const QVector<QUuid>& uuids, const QVector<QBackendRowData>& datas);
+    void added(const QVector<QUuid>& uuids, const QVector<QBackendRowData>& datas);
     void aboutToRemove(const QVector<QUuid>& uuids);
     void removed(const QVector<QUuid>& uuids);
 
@@ -54,16 +53,15 @@ private:
     // ### should be the abstract backend connection eventually, not a process
 
     // connection API
-    void appendFromProcess(const QVector<QUuid>& uuids, const QVector<QVector<QVariant>>& datas);
+    void appendFromProcess(const QVector<QUuid>& uuids, const QVector<QBackendRowData>& datas);
     void removeFromProcess(const QVector<QUuid>& uuids);
-    void updateFromProcess(const QVector<QUuid>& uuids, const QVector<QVector<QVariant>>& datas);
+    void updateFromProcess(const QVector<QUuid>& uuids, const QVector<QBackendRowData>& datas);
     // end connection API
 
-    QVector<QByteArray> m_roleNames;
-    QHash<QUuid, QVector<QVariant>> m_data;
+    QHash<QUuid, QMap<QByteArray, QVariant>> m_data;
 
     friend class QBackendProcess;
     friend class QBackendRepository;
-    QBackendModel(QBackendProcess* connection, const QString &identifier, const QVector<QByteArray>& roleNames);
+    QBackendModel(QBackendProcess* connection, const QString &identifier);
 };
 

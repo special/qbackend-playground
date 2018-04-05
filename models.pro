@@ -23,13 +23,11 @@ DEFINES += QT_DEPRECATED_WARNINGS
 SOURCES += \
     main.cpp \
     qbackendprocess.cpp \
-    qbackendrepository.cpp \
     qbackendmodel.cpp \
     qbackendlistmodel.cpp
 
 HEADERS += \
     qbackendprocess.h \
-    qbackendrepository.h \
     qbackendmodel.h \
     qbackendlistmodel.h
 

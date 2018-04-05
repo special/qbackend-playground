@@ -3,10 +3,9 @@
 #include "qbackendmodel.h"
 #include "qbackendprocess.h"
 
-QBackendModel::QBackendModel(QBackendProcess* connection, const QString& identifier, const QVector<QByteArray>& roleNames)
+QBackendModel::QBackendModel(QBackendProcess* connection, const QString& identifier)
     : m_identifier(identifier)
     , m_connection(connection)
-    , m_roleNames(roleNames)
 {
 }
 
@@ -15,12 +14,7 @@ QString QBackendModel::identifier() const
     return m_identifier;
 }
 
-QVector<QByteArray> QBackendModel::roleNames() const
-{
-    return m_roleNames;
-}
-
-QVector<QVariant> QBackendModel::data(const QUuid& uuid)
+QBackendModel::QBackendRowData QBackendModel::data(const QUuid& uuid)
 {
     return m_data[uuid];
 }
@@ -31,7 +25,7 @@ QVector<QUuid> QBackendModel::keys()
     return m_data.keys().toVector();
 }
 
-void QBackendModel::appendFromProcess(const QVector<QUuid>& uuids, const QVector<QVector<QVariant>>& datas)
+void QBackendModel::appendFromProcess(const QVector<QUuid>& uuids, const QVector<QBackendRowData>& datas)
 {
     Q_ASSERT(uuids.length() == datas.length());
 
@@ -43,12 +37,12 @@ void QBackendModel::appendFromProcess(const QVector<QUuid>& uuids, const QVector
     emit added(uuids, datas);
 }
 
-void QBackendModel::updateFromProcess(const QVector<QUuid>& uuids, const QVector<QVector<QVariant>>& datas)
+void QBackendModel::updateFromProcess(const QVector<QUuid>& uuids, const QVector<QBackendRowData>& datas)
 {
     Q_ASSERT(uuids.length() == datas.length());
 
     // ### do we need the old data? inefficient...
-    QVector<QVector<QVariant>> oldDatas;
+    QVector<QBackendRowData> oldDatas;
     oldDatas.reserve(datas.size());
 
     for (const QUuid& uuid : uuids) {

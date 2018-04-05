@@ -7,7 +7,6 @@
 
 #include "qbackendmodel.h"
 #include "qbackendprocess.h"
-#include "qbackendrepository.h"
 
 QBackendProcess::QBackendProcess(QObject *parent)
     : QObject(parent)
@@ -59,8 +58,8 @@ void QBackendProcess::componentComplete()
     // Start the process
     m_process.start("go", QStringList() << "run" << "test.go");
 
-    // And handshake it to get it fully initialized. This has to be synchronous,
-    // because our roleNames must be complete *now*.
+    // And handshake it to get it fully initialized. This does not really need
+    // to be synchronous...
     m_process.waitForReadyRead();
     bool synced = false;
     while (!synced) {
@@ -76,14 +75,6 @@ void QBackendProcess::componentComplete()
         } else if (initBuf.startsWith("MODEL ")) {
             QList<QByteArray> modelData = initBuf.split(' ');
             Q_ASSERT(modelData.size() >= 2);
-
-            QVector<QByteArray> roleNames;
-
-            for (int i = 2; i < modelData.count(); ++i) {
-                roleNames.append(modelData.at(i));
-            }
-
-            QBackendRepository::setupModel(this, modelData.at(1), roleNames);
         } else if (initBuf == "SYNCED") {
             qDebug() << "Initial sync done";
             synced = true;
@@ -131,16 +122,16 @@ void QBackendProcess::handleModelDataReady()
             QJsonDocument doc = QJsonDocument::fromJson(cmdBuf);
             if (doc.isObject()) {
                 QString modelId = QString::fromUtf8(parts[1]); // ### use QByteArray consistently
-                QBackendModel *model = QBackendRepository::model(modelId);
+                QBackendModel *model = fetchModel(modelId);
                 QJsonObject obj = doc.object();
 
-                QVector<QVariant> data;
+                QBackendModel::QBackendRowData data;
 
-                for (const QByteArray& role : model->roleNames()) {
-                    data.append(obj.value(role).toVariant());
+                for (const QString& key : obj.keys()) {
+                    data[key.toUtf8()] = obj.value(key).toVariant();
                 }
                 qDebug() << "Processing APPEND " << uuid << " into " << modelId << " len " << byteCnt << cmdBuf;
-                model->appendFromProcess(QVector<QUuid>() << uuid, QVector<QVector<QVariant>>() << data);
+                model->appendFromProcess(QVector<QUuid>() << uuid, QVector<QBackendModel::QBackendRowData>() << data);
             } else {
                 Q_UNREACHABLE(); // consider isArray for appending in bulk
             }
@@ -154,7 +145,7 @@ void QBackendProcess::handleModelDataReady()
             Q_ASSERT(parts.length() == 3);
 
             QString modelId = QString::fromUtf8(parts[1]); // ### use QByteArray consistently
-            QBackendModel *model = QBackendRepository::model(modelId);
+            QBackendModel *model = fetchModel(modelId);
             QUuid uuid = QUuid(parts[2]);
             model->removeFromProcess(QVector<QUuid>() << uuid);
         } else if (cmdBuf.startsWith("UPDATE ")) {
@@ -167,7 +158,7 @@ void QBackendProcess::handleModelDataReady()
             Q_ASSERT(parts.length() == 3);
 
             QString modelId = QString::fromUtf8(parts[1]); // ### use QByteArray consistently
-            QBackendModel *model = QBackendRepository::model(modelId);
+            QBackendModel *model = fetchModel(modelId);
             QUuid uuid = QUuid(parts[2]);
 
             int byteCnt = parts[3].toInt();
@@ -184,16 +175,16 @@ void QBackendProcess::handleModelDataReady()
             QJsonDocument doc = QJsonDocument::fromJson(cmdBuf);
             if (doc.isObject()) {
                 QString modelId = QString::fromUtf8(parts[1]); // ### use QByteArray consistently
-                QBackendModel *model = QBackendRepository::model(modelId);
+                QBackendModel *model = fetchModel(modelId);
                 QJsonObject obj = doc.object();
 
-                QVector<QVariant> data;
+                QBackendModel::QBackendRowData data;
 
-                for (const QByteArray& role : model->roleNames()) {
-                    data.append(obj.value(role).toVariant());
+                for (const QString& key : obj.keys()) {
+                    data[key.toUtf8()] = obj.value(key).toVariant();
                 }
                 qDebug() << "Processing UPDATE " << uuid << " into " << modelId << " len " << byteCnt << cmdBuf;
-                model->updateFromProcess(QVector<QUuid>() << uuid, QVector<QVector<QVariant>>() << data);
+                model->updateFromProcess(QVector<QUuid>() << uuid, QVector<QBackendModel::QBackendRowData>() << data);
             } else {
                 Q_UNREACHABLE(); // consider isArray for appending in bulk
             }
@@ -226,5 +217,16 @@ void QBackendProcess::invokeMethodOnObject(const QString& identifier, const QUui
     write(data.toUtf8());
     write(jsonData);
     write("\n");
+}
+
+QBackendModel* QBackendProcess::fetchModel(const QString& identifier)
+{
+    if (m_models.contains(identifier)) {
+        return m_models[identifier];
+    }
+
+    qDebug() << "Creating model " << identifier << " on connection " << this;
+    m_models[identifier] = new QBackendModel(this, identifier);
+    return m_models[identifier];
 }
 

@@ -5,6 +5,8 @@
 #include <QUuid>
 #include <QProcess>
 
+class QBackendModel;
+
 // A backend process is one form of RPC. It is not the only form of RPC.
 // It populates the repository with properties, models, and so on.
 
@@ -31,6 +33,7 @@ public:
     void invokeMethod(const QString& identifier, const QString& method, const QByteArray& jsonData);
     void invokeMethodOnObject(const QString& identifier, const QUuid& uuid, const QString& method, const QByteArray& jsonData);
     void write(const QByteArray& data);
+    QBackendModel* fetchModel(const QString& identifier);
 
 signals:
     void nameChanged();
@@ -44,5 +47,6 @@ private:
     QStringList m_args;
     bool m_completed = false;
     QProcess m_process;
+    QHash<QString, QBackendModel*> m_models;
 };
 
