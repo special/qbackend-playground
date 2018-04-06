@@ -1,15 +1,16 @@
-#include <iostream>
-
 #include <QDebug>
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QLoggingCategory>
 
-#include "qbackendmodel.h"
 #include "qbackendprocess.h"
 
+Q_LOGGING_CATEGORY(lcProto, "backend.proto")
+Q_LOGGING_CATEGORY(lcProtoExtreme, "backend.proto.extreme", QtWarningMsg)
+
 QBackendProcess::QBackendProcess(QObject *parent)
-    : QObject(parent)
+    : QBackendAbstractConnection(parent)
     , m_completed(false)
 {
 }
@@ -58,175 +59,106 @@ void QBackendProcess::componentComplete()
     // Start the process
     m_process.start("go", QStringList() << "run" << "test.go");
 
-    // And handshake it to get it fully initialized. This does not really need
-    // to be synchronous...
-    m_process.waitForReadyRead();
-    bool synced = false;
-    while (!synced) {
-        while (!m_process.canReadLine()) {
-            // busy loop until we have a full line...
-            m_process.waitForReadyRead();
+    m_process.waitForStarted(); // ### kind of nasty
+    if (m_pendingData.length()) {
+        for (const QByteArray& data : m_pendingData) {
+            write(data);
         }
-        QByteArray initBuf = m_process.readLine();
-        initBuf.truncate(initBuf.length() - 1);
-
-        if (initBuf.startsWith("VERSION")) {
-            qDebug() << "Reading from " << initBuf;
-        } else if (initBuf.startsWith("MODEL ")) {
-            QList<QByteArray> modelData = initBuf.split(' ');
-            Q_ASSERT(modelData.size() >= 2);
-        } else if (initBuf == "SYNCED") {
-            qDebug() << "Initial sync done";
-            synced = true;
-            break;
-        } else {
-            qWarning() << "Unknown initial burst " << initBuf;
-            Q_UNREACHABLE();
-        }
+        m_pendingData.clear();
     }
 
-    Q_ASSERT(synced);
     connect(&m_process, &QIODevice::readyRead, this, &QBackendProcess::handleModelDataReady);
     handleModelDataReady();
+}
+
+QJsonDocument QBackendProcess::readJsonBlob(int byteCount)
+{
+    QByteArray cmdBuf;
+    while (cmdBuf.length() < byteCount) {
+        qCDebug(lcProtoExtreme) << "Want " << byteCount << " bytes, have " << cmdBuf.length();
+        m_process.waitForReadyRead(10);
+        cmdBuf += m_process.read(byteCount - cmdBuf.length());
+    }
+    Q_ASSERT(cmdBuf.length() == byteCount);
+    QJsonParseError pe;
+    QJsonDocument doc = QJsonDocument::fromJson(cmdBuf, &pe);
+    if (doc.isNull()) {
+        qWarning() << "Bad blob: " << cmdBuf << pe.errorString();
+    }
+    return doc;
 }
 
 void QBackendProcess::handleModelDataReady()
 {
     while (m_process.canReadLine()) {
+        qCDebug(lcProtoExtreme) << "Reading...";
         QByteArray cmdBuf = m_process.readLine();
         if (cmdBuf == "\n") {
             // ignore
             continue;
         }
 
-        std::cout << "Read " << cmdBuf.data() << std::endl;
-        if (cmdBuf.startsWith("APPEND ")) {
+        qCDebug(lcProto) << "Read " << cmdBuf;
+        if (cmdBuf.startsWith("VERSION ")) {
+            // First, remove the newline.
+            cmdBuf.truncate(cmdBuf.length() - 1);
+            QList<QByteArray> parts = cmdBuf.split(' ');
+            Q_ASSERT(parts.length() == 2);
+            qCInfo(lcProto) << "Connected to backend version " << parts[1];
+        } else if (cmdBuf.startsWith("OBJECT_CREATE ")) {
             // First, remove the newline.
             cmdBuf.truncate(cmdBuf.length() - 1);
 
-            // APPEND <model> <UUID> <len>
             QList<QByteArray> parts = cmdBuf.split(' ');
-            Q_ASSERT(parts.length() == 4);
-            QUuid uuid = QUuid(parts[2]);
-            int byteCnt = parts[3].toInt();
+            Q_ASSERT(parts.length() == 2);
+            QByteArray identifier = QByteArray(parts[1]);
 
-            // Read JSON data
-            cmdBuf.clear();
-            while (cmdBuf.length() < byteCnt) {
-                qDebug() << "Want " << byteCnt << " bytes, have " << cmdBuf.length();
-                m_process.waitForReadyRead(10);
-                cmdBuf += m_process.read(byteCnt - cmdBuf.length());
-            }
-            Q_ASSERT(cmdBuf.length() == byteCnt);
-
-            QJsonDocument doc = QJsonDocument::fromJson(cmdBuf);
-            if (doc.isObject()) {
-                QString modelId = QString::fromUtf8(parts[1]); // ### use QByteArray consistently
-                QBackendModel *model = fetchModel(modelId);
-                QJsonObject obj = doc.object();
-
-                QBackendModel::QBackendRowData data;
-
-                for (const QString& key : obj.keys()) {
-                    data[key.toUtf8()] = obj.value(key).toVariant();
-                }
-                qDebug() << "Processing APPEND " << uuid << " into " << modelId << " len " << byteCnt << cmdBuf;
-                model->appendFromProcess(QVector<QUuid>() << uuid, QVector<QBackendModel::QBackendRowData>() << data);
+            QJsonDocument doc = readJsonBlob(parts[2].toInt());
+            if (m_subscribedObjects.contains(identifier)) {
+                m_subscribedObjects[identifier]->objectFound(doc);
             } else {
-                Q_UNREACHABLE(); // consider isArray for appending in bulk
+                qCWarning(lcProto) << "Got creation for unsubscribed identifier: " << identifier << doc;
             }
-        } else if (cmdBuf.startsWith("REMOVE ")) {
+        } else if (cmdBuf.startsWith("OBJECT_INVOKE ")) {
             // First, remove the newline.
             cmdBuf.truncate(cmdBuf.length() - 1);
 
-            // REMOVE <model> <UUID>
             QList<QByteArray> parts = cmdBuf.split(' ');
-
             Q_ASSERT(parts.length() == 3);
 
-            QString modelId = QString::fromUtf8(parts[1]); // ### use QByteArray consistently
-            QBackendModel *model = fetchModel(modelId);
-            QUuid uuid = QUuid(parts[2]);
-            model->removeFromProcess(QVector<QUuid>() << uuid);
-        } else if (cmdBuf.startsWith("UPDATE ")) {
-            // First, remove the newline.
-            cmdBuf.truncate(cmdBuf.length() - 1);
-
-            // UPDATE <model> <UUID> <len>
-            QList<QByteArray> parts = cmdBuf.split(' ');
-
-            Q_ASSERT(parts.length() == 3);
-
-            QString modelId = QString::fromUtf8(parts[1]); // ### use QByteArray consistently
-            QBackendModel *model = fetchModel(modelId);
-            QUuid uuid = QUuid(parts[2]);
-
-            int byteCnt = parts[3].toInt();
-
-            // Read JSON data
-            cmdBuf.clear();
-            while (cmdBuf.length() < byteCnt) {
-                qDebug() << "Want " << byteCnt << " bytes, have " << cmdBuf.length();
-                m_process.waitForReadyRead(10);
-                cmdBuf += m_process.read(byteCnt - cmdBuf.length());
-            }
-            Q_ASSERT(cmdBuf.length() == byteCnt);
-
-            QJsonDocument doc = QJsonDocument::fromJson(cmdBuf);
-            if (doc.isObject()) {
-                QString modelId = QString::fromUtf8(parts[1]); // ### use QByteArray consistently
-                QBackendModel *model = fetchModel(modelId);
-                QJsonObject obj = doc.object();
-
-                QBackendModel::QBackendRowData data;
-
-                for (const QString& key : obj.keys()) {
-                    data[key.toUtf8()] = obj.value(key).toVariant();
-                }
-                qDebug() << "Processing UPDATE " << uuid << " into " << modelId << " len " << byteCnt << cmdBuf;
-                model->updateFromProcess(QVector<QUuid>() << uuid, QVector<QBackendModel::QBackendRowData>() << data);
-            } else {
-                Q_UNREACHABLE(); // consider isArray for appending in bulk
-            }
+            QJsonDocument doc = readJsonBlob(parts[3].toInt());
+            qCDebug(lcProto) << "Invoke " << parts[2] << " on " << parts[1] << doc.toVariant();
         }
     }
 }
 
 void QBackendProcess::write(const QByteArray& data)
 {
-    if (data != "\n") {
-        std::cout << "Sending " << data.data();
+    if (m_process.state() != QProcess::Running) {
+        qCDebug(lcProtoExtreme) << "Write on a non-running process buffered: " << data;
+        m_pendingData.append(data);
+        return;
     }
-    if (data[data.length() - 1] != '\n') {
-        std::cout << std::endl;
-    }
+
+    qCDebug(lcProto) << "Writing " << data;
     m_process.write(data);
 }
 
-void QBackendProcess::invokeMethod(const QString& identifier, const QString& method, const QByteArray& jsonData)
+void QBackendProcess::invokeMethod(const QByteArray& identifier, const QString& method, const QByteArray& jsonData)
 {
+    qCDebug(lcProto) << "Invoking " << identifier << method << jsonData;
     QString data = "INVOKE " + identifier + " " + method + " " + QString::number(jsonData.length()) + "\n";
     write(data.toUtf8());
-    write(jsonData);
-    write("\n");
+    write(jsonData + '\n');
 }
 
-void QBackendProcess::invokeMethodOnObject(const QString& identifier, const QUuid& id, const QString& method, const QByteArray& jsonData)
+// ### unsubscribe
+void QBackendProcess::subscribe(const QByteArray& identifier, QBackendRemoteObject* object)
 {
-    QString data = "OINVOKE " + identifier + " " + method + " " + id.toByteArray() + " " + QString::number(jsonData.length()) + "\n";
+    qCDebug(lcProto) << "Creating remote object handler " << identifier << " on connection " << this << " for " << object;
+    m_subscribedObjects[identifier] = object;
+    QString data = "SUBSCRIBE " + identifier + "\n";
     write(data.toUtf8());
-    write(jsonData);
-    write("\n");
 }
 
-QBackendModel* QBackendProcess::fetchModel(const QString& identifier)
-{
-    if (m_models.contains(identifier)) {
-        return m_models[identifier];
-    }
-
-    qDebug() << "Creating model " << identifier << " on connection " << this;
-    m_models[identifier] = new QBackendModel(this, identifier);
-    return m_models[identifier];
-}
 

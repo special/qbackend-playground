@@ -2,15 +2,16 @@
 
 #include <QObject>
 #include <QQmlParserStatus>
-#include <QUuid>
 #include <QProcess>
+
+#include "qbackendabstractconnection.h"
 
 class QBackendModel;
 
 // A backend process is one form of RPC. It is not the only form of RPC.
 // It populates the repository with properties, models, and so on.
 
-class QBackendProcess : public QObject, public QQmlParserStatus
+class QBackendProcess : public QBackendAbstractConnection, public QQmlParserStatus
 {
     Q_OBJECT
     Q_PROPERTY(QString name READ name WRITE setName NOTIFY nameChanged)
@@ -29,11 +30,8 @@ protected:
     void componentComplete() override;
 
 public:
-    // #### these eventually should be in a base class
-    void invokeMethod(const QString& identifier, const QString& method, const QByteArray& jsonData);
-    void invokeMethodOnObject(const QString& identifier, const QUuid& uuid, const QString& method, const QByteArray& jsonData);
-    void write(const QByteArray& data);
-    QBackendModel* fetchModel(const QString& identifier);
+    void invokeMethod(const QByteArray& identifier, const QString& method, const QByteArray& jsonData) override;
+    void subscribe(const QByteArray& identifier, QBackendRemoteObject* object) override;
 
 signals:
     void nameChanged();
@@ -47,6 +45,11 @@ private:
     QStringList m_args;
     bool m_completed = false;
     QProcess m_process;
-    QHash<QString, QBackendModel*> m_models;
+    QList<QByteArray> m_pendingData;
+
+    QJsonDocument readJsonBlob(int byteCount);
+    void write(const QByteArray& data);
+
+    QHash<QByteArray, QBackendRemoteObject*> m_subscribedObjects;
 };
 

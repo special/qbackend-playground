@@ -1,13 +1,13 @@
 package main
 
 import (
+	qbackend "./qbackend_go"
 	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"github.com/satori/go.uuid"
 	"os"
-	"reflect"
 	"strconv"
 	"strings"
 )
@@ -43,18 +43,17 @@ import (
 // -> VERSION 2
 // -> OBJECT_CREATE <uuid>
 // -> OBJECT_REGISTER <uuid> foo // register the uuid with this name for lookup
-// -> SYNC (no blocking needed now, this is just informational, for error checking)
-// -> INVOKE <uuid> append 9
+// -> OBJECT_INVOKE <uuid> append 9
 // -> (json)
-// -> INVOKE <uuid> remove 9
+// -> OBJECT_INVOKE <uuid> remove 9
 //
 // .....
 //
-// -> INVOKE <uuid> random 9
+// -> OBJECT_INVOKE <uuid> random 9
 // ... if it's not a model-internal method, it can then be passed to QML etc to
 // handle. imagine:
 //
-// -> INVOKE <uuid> fileTransferIncoming 9
+// -> OBJECT_INVOKE <uuid> fileTransferIncoming 9
 // (json)
 //
 // ... for notifications from the backend.
@@ -67,8 +66,8 @@ import (
 // them.
 //
 // The protocol for UI to backend would be virtually identical:
-// INVOKE <uuid> addNew
-// INVOKE <uuid> update...
+// OBJECT_INVOKE <uuid> addNew
+// OBJECT_INVOKE <uuid> update...
 //
 // all of the logic for these would be left to the object itself.
 //
@@ -78,30 +77,17 @@ import (
 // OBJECT_UPDATE
 // OBJECT_REGISTER
 // OBJECT_DESTROY
-// SYNC
-// INVOKE
+// OBJECT_INVOKE
+
+type PersonModel struct {
+	People []Person `json:"data"`
+}
 
 type Person struct {
+	UUID      uuid.UUID
 	FirstName string `json:"firstName"`
 	LastName  string `json:"lastName"`
-	Age       int    `json:"age"`
-}
-
-func printRoles(v interface{}) {
-	val := reflect.ValueOf(v)
-	var roles []string
-
-	for i := 0; i < val.Type().NumField(); i++ {
-		roles = append(roles, val.Type().Field(i).Tag.Get("json"))
-	}
-
-	fmt.Println(fmt.Sprintf("MODEL %T %s", v, strings.Join(roles, " ")))
-}
-
-func printPerson(p Person) {
-	buf, _ := json.Marshal(p)
-	fmt.Println(fmt.Sprintf("APPEND %T %s %d", p, uuid.NewV4(), len(buf)))
-	fmt.Println(fmt.Sprintf("%s", buf))
+	Age       int    `json:"age,string"`
 }
 
 var personCount = 0
@@ -120,7 +106,7 @@ func dropCR(data []byte) []byte {
 // Hack to make Scanner give us line by line data, or a block of byteCnt bytes.
 func scanLinesOrBlock(data []byte, atEOF bool) (advance int, token []byte, err error) {
 	if scanningForDataLength {
-		//fmt.Printf("DEBUG read %d bytes wanted %d\n", len(data), byteCnt)
+		fmt.Printf("DEBUG Want %d got %d\n", byteCnt, len(data))
 		if len(data) < int(byteCnt) {
 			return 0, nil, nil
 		}
@@ -144,16 +130,15 @@ func scanLinesOrBlock(data []byte, atEOF bool) (advance int, token []byte, err e
 
 	// Request more data.
 	return 0, nil, nil
-
 }
 
 func main() {
-	fmt.Println("VERSION 1")
-	printRoles(Person{})
-	fmt.Println("SYNCED")
+	qbackend.Startup()
 
-	printPerson(Person{FirstName: "Robin", LastName: "Burchell", Age: 31})
-	printPerson(Person{FirstName: "Kamilla", LastName: "Bremeraunet", Age: 30})
+	pm := &PersonModel{}
+	r := Person{FirstName: "Robin", LastName: "Burchell", Age: 31, UUID: uuid.NewV4()}
+	k := Person{FirstName: "Kamilla", LastName: "Bremeraunet", Age: 30, UUID: uuid.NewV4()}
+	pm.People = append(pm.People, r, k)
 
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Split(scanLinesOrBlock)
@@ -161,30 +146,13 @@ func main() {
 	for scanner.Scan() {
 		line := scanner.Text()
 		fmt.Println(fmt.Sprintf("DEBUG %s", line))
-		if strings.HasPrefix(line, "INVOKE ") {
-			// INVOKE objIdentifier method len
+
+		if strings.HasPrefix(line, "SUBSCRIBE ") {
+			qbackend.Create("PersonModel", pm)
+		} else if strings.HasPrefix(line, "INVOKE ") {
 			parts := strings.Split(line, " ")
 			if len(parts) < 4 {
-				continue
-			}
-
-			if parts[1] == "main.Person" {
-				if parts[2] == "addNew" {
-					printPerson(Person{FirstName: "Another", LastName: "Person", Age: 15 + personCount})
-					personCount++
-				}
-			}
-
-			// Skip the JSON blob
-			byteCnt, _ = strconv.ParseInt(parts[3], 10, 32)
-
-			scanningForDataLength = true
-			scanner.Scan()
-			scanningForDataLength = false
-		} else if strings.HasPrefix(line, "OINVOKE ") {
-			// INVOKE objIdentifier method uuid len
-			parts := strings.Split(line, " ")
-			if len(parts) < 5 {
+				fmt.Println(fmt.Sprintf("DEBUG %s too short!", line))
 				continue
 			}
 
@@ -195,16 +163,46 @@ func main() {
 			scanner.Scan()
 			scanningForDataLength = false
 
-			jsonBlob := scanner.Text()
+			jsonBlob := []byte(scanner.Text())
 
-			if parts[1] == "main.Person" {
+			if parts[1] == "PersonModel" {
+				if parts[2] == "addNew" {
+					p := Person{FirstName: "Another", LastName: "Person", Age: 15 + personCount, UUID: uuid.NewV4()}
+					pm.People = append(pm.People, p)
+					qbackend.Create("PersonModel", pm)
+					personCount++
+				}
+
+				// ### must be a model member for now
 				if parts[2] == "remove" {
-					fmt.Println(fmt.Sprintf("REMOVE main.Person %s", parts[3]))
+					type removeCommand struct {
+						UUID uuid.UUID `json:"UUID"`
+					}
+					var removeCmd removeCommand
+					json.Unmarshal(jsonBlob, &removeCmd)
+					fmt.Printf("Removing %+v (from JSON blob %s)\n", removeCmd, jsonBlob)
+					for idx, p := range pm.People {
+						if p.UUID == removeCmd.UUID {
+							pm.People = append(pm.People[0:idx], pm.People[idx+1:]...)
+							qbackend.Create("PersonModel", pm)
+							break
+						}
+					}
 				} else if parts[2] == "update" {
-					fmt.Println(fmt.Sprintf("UPDATE main.Person %s %d", parts[3], len(jsonBlob)))
-					fmt.Println(jsonBlob)
+					var pobj Person
+					json.Unmarshal([]byte(jsonBlob), &pobj)
+					for idx, p := range pm.People {
+						if p.UUID == pobj.UUID {
+							fmt.Printf("DEBUG %+v from %s\n", pobj, jsonBlob)
+							pm.People[idx] = pobj
+							qbackend.Create("PersonModel", pm)
+							break
+						}
+					}
 				}
 			}
+
+			// Skip the JSON blob
 		}
 	}
 }

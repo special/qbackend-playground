@@ -1,23 +1,25 @@
 #include <iostream>
 #include <QDebug>
 #include <QQmlEngine>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
 
-#include "qbackendprocess.h"
+#include "qbackendabstractconnection.h"
 #include "qbackendlistmodel.h"
-#include "qbackendmodel.h"
 
 QBackendListModel::QBackendListModel(QObject *parent)
     : QAbstractListModel(parent)
 {
 }
 
-QBackendProcess* QBackendListModel::connection() const
+QBackendAbstractConnection* QBackendListModel::connection() const
 {
     return m_connection;
 }
 
 // ### error on componentComplete if not set
-void QBackendListModel::setConnection(QBackendProcess* connection)
+void QBackendListModel::setConnection(QBackendAbstractConnection* connection)
 {
     if (connection == m_connection) {
         return;
@@ -25,7 +27,7 @@ void QBackendListModel::setConnection(QBackendProcess* connection)
 
     m_connection = connection;
     if (!m_identifier.isEmpty()) {
-        setIdentifier(m_identifier); // reinitialize
+        subscribeIfReady();
     }
     emit connectionChanged();
 }
@@ -44,66 +46,130 @@ void QBackendListModel::setRoles(const QStringList &roleNames)
 
     m_flatRoleNames = roleNames;
     if (!m_identifier.isEmpty()) {
-        setIdentifier(m_identifier); // reinitialize
+        subscribeIfReady();
     }
     emit roleNamesChanged();
 }
 
-QString QBackendListModel::identifier() const
+QByteArray QBackendListModel::identifier() const
 {
     return m_identifier;
 }
 
-// ### error on componentComplete if not set
-void QBackendListModel::setIdentifier(const QString& id)
+class QBackendListModelProxy : public QBackendRemoteObject
 {
-    m_identifier = id;
-    if (!m_connection) {
+public:
+    QBackendListModelProxy(QBackendListModel* model);
+    void objectFound(const QJsonDocument& document) override;
+    void methodInvoked(const QByteArray& method, const QJsonDocument& document) override;
+
+private:
+    QBackendListModel *m_model = nullptr;
+};
+
+QBackendListModelProxy::QBackendListModelProxy(QBackendListModel* model)
+    : m_model(model)
+{
+}
+
+void QBackendListModelProxy::objectFound(const QJsonDocument& document)
+{
+#if 0
+    Q_ASSERT(doc.isObject());
+    QJsonObject obj = doc.object();
+
+    QMap<QString, QVariant> data;
+
+    for (const QString& key : obj.keys()) {
+        data[key.toUtf8()] = obj.value(key).toVariant();
+    }
+#endif
+    m_model->doReset(document);
+}
+
+void QBackendListModel::doReset(const QJsonDocument& document)
+{
+    qDebug() << "Resetting to " << document;
+    beginResetModel();
+    m_idMap.clear();
+    m_data.clear();
+
+    Q_ASSERT(document.isObject());
+    if (!document.isObject()) {
+        qWarning() << "Got a document not an object: " << document;
+        endResetModel();
         return;
     }
 
-    if (m_model) {
-        disconnect(m_model, &QBackendModel::aboutToUpdate, this, &QBackendListModel::onAboutToUpdate);
-        disconnect(m_model, &QBackendModel::updated, this, &QBackendListModel::onUpdated);
-        disconnect(m_model, &QBackendModel::aboutToAdd, this, &QBackendListModel::onAboutToAdd);
-        disconnect(m_model, &QBackendModel::added, this, &QBackendListModel::onAdded);
-        disconnect(m_model, &QBackendModel::aboutToRemove, this, &QBackendListModel::onAboutToRemove);
-        disconnect(m_model, &QBackendModel::removed, this, &QBackendListModel::onRemoved);
+    QJsonObject dataObject = document.object();
+    QJsonObject::const_iterator datait;
+    if ((datait = dataObject.constFind("data")) == dataObject.constEnd()) {
+        qDebug() << "No data object found";
+        endResetModel();
+        return; // no rows
     }
 
-    qDebug() << "Setting up ID " << id << m_connection << m_model;
-    beginResetModel();
-    m_model = m_connection->fetchModel(id);
+    Q_ASSERT(datait.value().isArray());
+    QJsonArray dataArray = datait.value().toArray();
 
-    m_roleNames.clear();
-    m_idMap.clear();
+    if (dataArray.size() == 0) {
+        qDebug() << "Empty data object";
+        endResetModel();
+        return; // no rows
+    }
 
-    if (m_model) {
-        // ### should validate that the backend knows about these roles
-        for (const QString& role : m_flatRoleNames) {
-            m_roleNames[Qt::UserRole + m_roleNames.count()] = role.toUtf8();
+    for (int i = 0; i < dataArray.size(); ++i) {
+        if (!dataArray.at(i).isObject()) {
+            // uh.. ok
+            continue;
         }
-        for (const QUuid& uuid : m_model->keys()) {
-            m_idMap.append(uuid);
+
+        QJsonObject row = dataArray.at(i).toObject();
+        QMap<QByteArray, QVariant> rowData;
+        bool hasUuid = false;
+
+        for (QJsonObject::const_iterator rowit = row.constBegin(); rowit != row.constEnd(); rowit++) {
+            if (rowit.key() == "UUID") {
+                m_idMap.append(QUuid(rowit.value().toString().toUtf8()));
+                hasUuid = true;
+            } else {
+                rowData[rowit.key().toUtf8()] = rowit.value().toVariant();
+            }
+        }
+
+        if (hasUuid) {
+            m_data.append(rowData);
         }
     }
 
-    m_roleNames[Qt::UserRole + m_roleNames.count()] = "_uuid";
-
-    qWarning() << "Set model " << m_model << " for identifier " << id << m_roleNames << " rows " << m_idMap.count();
     endResetModel();
-
-    if (m_model) {
-        connect(m_model, &QBackendModel::aboutToUpdate, this, &QBackendListModel::onAboutToUpdate);
-        connect(m_model, &QBackendModel::updated, this, &QBackendListModel::onUpdated);
-        connect(m_model, &QBackendModel::aboutToAdd, this, &QBackendListModel::onAboutToAdd);
-        connect(m_model, &QBackendModel::added, this, &QBackendListModel::onAdded);
-        connect(m_model, &QBackendModel::aboutToRemove, this, &QBackendListModel::onAboutToRemove);
-        connect(m_model, &QBackendModel::removed, this, &QBackendListModel::onRemoved);
-    }
 }
 
+void QBackendListModelProxy::methodInvoked(const QByteArray& method, const QJsonDocument& document)
+{
+    if (method == "append") {
+        qWarning() << "append";
+#if 0
+    beginInsertRows(QModelIndex(), m_idMap.size(), m_idMap.size() + uuids.length() - 1);
+    for (const QUuid& uuid : uuids) {
+        qWarning() << "Appending " << uuid;
+        Q_ASSERT(!m_idMap.contains(uuid));
+        m_idMap.append(uuid);
+    }
+    endInsertRows();
+#endif
+    }
+    if (method == "update") {
+        qWarning() << "update";
+    }
+    if (method == "remove") {
+        qWarning() << "remove";
+    }
 
+#if 0
+    for (const QUuid& uuid : m_model->keys()) {
+        m_idMap.append(uuid);
+    }
 void QBackendListModel::onAboutToUpdate(const QVector<QUuid>& uuids, const QVector<QBackendModel::QBackendRowData>& oldDatas, const QVector<QBackendModel::QBackendRowData>& newDatas)
 {
 }
@@ -126,13 +192,6 @@ void QBackendListModel::onAboutToAdd(const QVector<QUuid>& uuids, const QVector<
 
 void QBackendListModel::onAdded(const QVector<QUuid>& uuids, const QVector<QBackendModel::QBackendRowData>& datas)
 {
-    beginInsertRows(QModelIndex(), m_idMap.size(), m_idMap.size() + uuids.length() - 1);
-    for (const QUuid& uuid : uuids) {
-        qWarning() << "Appending " << uuid;
-        Q_ASSERT(!m_idMap.contains(uuid));
-        m_idMap.append(uuid);
-    }
-    endInsertRows();
 }
 
 void QBackendListModel::onAboutToRemove(const QVector<QUuid>& uuids)
@@ -153,6 +212,46 @@ void QBackendListModel::onRemoved(const QVector<QUuid>& uuids)
         endRemoveRows();
     }
 }
+#endif
+}
+
+// ### error on componentComplete if not set
+void QBackendListModel::setIdentifier(const QByteArray& id)
+{
+    if (m_identifier == id) {
+        return;
+    }
+
+    m_identifier = id;
+    subscribeIfReady();
+}
+
+void QBackendListModel::subscribeIfReady()
+{
+    if (!m_connection || m_identifier.isEmpty()) {
+        return;
+    }
+
+    Q_ASSERT(!m_proxy);
+
+    qDebug() << "Setting up ID " << m_identifier << m_connection;
+    beginResetModel();
+    m_proxy = new QBackendListModelProxy(this);
+    m_connection->subscribe(m_identifier, m_proxy);
+
+    m_roleNames.clear();
+    m_idMap.clear();
+
+    // ### should validate that the backend knows about these roles
+    for (const QString& role : m_flatRoleNames) {
+        m_roleNames[Qt::UserRole + m_roleNames.count()] = role.toUtf8();
+    }
+
+    m_roleNames[Qt::UserRole + m_roleNames.count()] = "_uuid";
+
+    qWarning() << "Set model " << m_proxy << " for identifier " << m_identifier << m_roleNames << " rows " << m_idMap.count();
+    endResetModel();
+}
 
 void QBackendListModel::invokeMethod(const QString& method, const QJSValue& data)
 {
@@ -161,17 +260,7 @@ void QBackendListModel::invokeMethod(const QString& method, const QJSValue& data
     QJSValue json = global.property("JSON");
     QJSValue stringify = json.property("stringify");
     QJSValue jsonData = stringify.call(QList<QJSValue>() << data);
-    m_model->invokeMethod(method, jsonData.toString().toUtf8());
-}
-
-void QBackendListModel::invokeMethodOnRow(int index, const QString& method, const QJSValue& data)
-{
-    QJSEngine *engine = qmlEngine(this);
-    QJSValue global = engine->globalObject();
-    QJSValue json = global.property("JSON");
-    QJSValue stringify = json.property("stringify");
-    QJSValue jsonData = stringify.call(QList<QJSValue>() << data);
-    m_model->invokeMethodOnObject(m_idMap.at(index), method, jsonData.toString().toUtf8());
+    m_connection->invokeMethod(m_identifier, method, jsonData.toString().toUtf8());
 }
 
 QHash<int, QByteArray> QBackendListModel::roleNames() const
@@ -188,10 +277,9 @@ QVariant QBackendListModel::data(const QModelIndex &index, int role) const
 {
     if (role == Qt::UserRole + m_roleNames.count() - 1) {
         // uuid request
-        return m_idMap.at(index.row());
+        return m_idMap.at(index.row()).toString();
     }
 
-    qWarning() << m_model->data(m_idMap.at(index.row()));
-    return m_model->data(m_idMap.at(index.row()))[m_flatRoleNames.at(role - Qt::UserRole).toUtf8()];
+    return m_data[index.row()][m_flatRoleNames.at(role - Qt::UserRole).toUtf8()];
 }
 

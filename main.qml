@@ -20,7 +20,7 @@ Item {
         model: BackendListModel {
             id: myData
             connection: backendProcess
-            identifier: "main.Person"
+            identifier: "PersonModel"
             roles: [ "firstName", "lastName", "age" ]
         }
         delegate: Item {
@@ -50,7 +50,8 @@ Item {
                         text: "Remove"
 
                         onClicked: {
-                            myData.invokeMethodOnRow(index, "remove")
+                            var data = { UUID: model._uuid }
+                            myData.invokeMethod("remove", data)
                         }
                     }
                 }
@@ -79,8 +80,8 @@ Item {
                     Button {
                         text: "Update"
                         onClicked: {
-                            var dat = {firstName: firstNameText.text, lastName: lastNameText.text, age: ageText.text}
-                            myData.invokeMethodOnRow(index, "update", dat)
+                            var dat = {UUID: model._uuid, firstName: firstNameText.text, lastName: lastNameText.text, age: ageText.text}
+                            myData.invokeMethod("update", dat)
                             firstNameText.text = ""
                             lastNameText.text = ""
                             ageText.text = ""
