@@ -90,7 +90,6 @@ type Person struct {
 	Age       int    `json:"age,string"`
 }
 
-var personCount = 0
 var scanningForDataLength bool = false
 var byteCnt int64
 
@@ -132,10 +131,16 @@ func scanLinesOrBlock(data []byte, atEOF bool) (advance int, token []byte, err e
 	return 0, nil, nil
 }
 
+type generalData struct {
+	TestData    string `json:"testData"`
+	TotalPeople int    `json:"totalPeople"`
+}
+
 func main() {
 	qbackend.Startup()
 
 	pm := &PersonModel{}
+	gd := generalData{TestData: "Now connected", TotalPeople: len(pm.People)}
 	r := Person{FirstName: "Robin", LastName: "Burchell", Age: 31, UUID: uuid.NewV4()}
 	k := Person{FirstName: "Kamilla", LastName: "Bremeraunet", Age: 30, UUID: uuid.NewV4()}
 	pm.People = append(pm.People, r, k)
@@ -148,7 +153,12 @@ func main() {
 		fmt.Println(fmt.Sprintf("DEBUG %s", line))
 
 		if strings.HasPrefix(line, "SUBSCRIBE ") {
-			qbackend.Create("PersonModel", pm)
+			parts := strings.Split(line, " ")
+			if parts[1] == "PersonModel" {
+				qbackend.Create("PersonModel", pm)
+			} else if parts[1] == "generalData" {
+				qbackend.Create("generalData", gd)
+			}
 		} else if strings.HasPrefix(line, "INVOKE ") {
 			parts := strings.Split(line, " ")
 			if len(parts) < 4 {
@@ -167,10 +177,11 @@ func main() {
 
 			if parts[1] == "PersonModel" {
 				if parts[2] == "addNew" {
-					p := Person{FirstName: "Another", LastName: "Person", Age: 15 + personCount, UUID: uuid.NewV4()}
+					p := Person{FirstName: "Another", LastName: "Person", Age: 15 + len(pm.People), UUID: uuid.NewV4()}
 					pm.People = append(pm.People, p)
 					qbackend.Create("PersonModel", pm)
-					personCount++
+					gd.TotalPeople = len(pm.People)
+					qbackend.Create("generalData", gd)
 				}
 
 				// ### must be a model member for now

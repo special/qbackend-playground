@@ -6,6 +6,14 @@ Item {
     width: 500
     height: 800
 
+    BackendStore {
+        id: dataStore
+        property string testData: "Connecting..."
+        property int totalPeople: 0
+        connection: backendProcess
+        identifier: "generalData"
+    }
+
     BackendProcess {
         id: backendProcess
         name: "go"
@@ -15,7 +23,7 @@ Item {
     ListView {
         id: myView
         width: parent.width
-        anchors.top: parent.top
+        anchors.top: headerRow.bottom
         anchors.bottom: bottomRow.top
         model: BackendListModel {
             id: myData
@@ -88,6 +96,25 @@ Item {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    Row {
+        id: headerRow
+        width: parent.width
+        height: childrenRect.height
+        Rectangle {
+            color: "red"
+            width: parent.width
+            height: 50
+
+            Label {
+                color: "white"
+                text: dataStore.testData + " ; people: " + dataStore.totalPeople
+                anchors.centerIn: parent
+                font.bold: true
+                font.pixelSize: headerRow.height/2
             }
         }
     }

@@ -234,7 +234,6 @@ void QBackendListModel::subscribeIfReady()
 
     Q_ASSERT(!m_proxy);
 
-    qDebug() << "Setting up ID " << m_identifier << m_connection;
     beginResetModel();
     m_proxy = new QBackendListModelProxy(this);
     m_connection->subscribe(m_identifier, m_proxy);

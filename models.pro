@@ -24,11 +24,13 @@ SOURCES += \
     main.cpp \
     qbackendprocess.cpp \
     qbackendlistmodel.cpp \
-    qbackendabstractconnection.cpp
+    qbackendabstractconnection.cpp \
+    qbackendstore.cpp
 
 HEADERS += \
     qbackendprocess.h \
     qbackendlistmodel.h \
-    qbackendabstractconnection.h
+    qbackendabstractconnection.h \
+    qbackendstore.h
 
 
