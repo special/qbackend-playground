@@ -6,6 +6,7 @@
 
 #include "qbackendprocess.h"
 
+Q_LOGGING_CATEGORY(lcProcess, "backend.process")
 Q_LOGGING_CATEGORY(lcProto, "backend.proto")
 Q_LOGGING_CATEGORY(lcProtoExtreme, "backend.proto.extreme", QtWarningMsg)
 
@@ -104,7 +105,7 @@ void QBackendProcess::handleModelDataReady()
             cmdBuf.truncate(cmdBuf.length() - 1);
             QList<QByteArray> parts = cmdBuf.split(' ');
             Q_ASSERT(parts.length() == 2);
-            qCInfo(lcProto) << "Connected to backend version " << parts[1];
+            qCInfo(lcProcess) << "Connected to backend version " << parts[1];
         } else if (cmdBuf.startsWith("OBJECT_CREATE ")) {
             // First, remove the newline.
             cmdBuf.truncate(cmdBuf.length() - 1);
@@ -117,7 +118,7 @@ void QBackendProcess::handleModelDataReady()
             if (m_subscribedObjects.contains(identifier)) {
                 m_subscribedObjects[identifier]->objectFound(doc);
             } else {
-                qCWarning(lcProto) << "Got creation for unsubscribed identifier: " << identifier << doc;
+                qCWarning(lcProcess) << "Got creation for unsubscribed identifier: " << identifier << doc;
             }
         } else if (cmdBuf.startsWith("OBJECT_INVOKE ")) {
             // First, remove the newline.
@@ -127,7 +128,7 @@ void QBackendProcess::handleModelDataReady()
             Q_ASSERT(parts.length() == 3);
 
             QJsonDocument doc = readJsonBlob(parts[3].toInt());
-            qCDebug(lcProto) << "Invoke " << parts[2] << " on " << parts[1] << doc.toVariant();
+            qCDebug(lcProcess) << "Invoke " << parts[2] << " on " << parts[1] << doc.toVariant();
         }
     }
 }
@@ -146,7 +147,7 @@ void QBackendProcess::write(const QByteArray& data)
 
 void QBackendProcess::invokeMethod(const QByteArray& identifier, const QString& method, const QByteArray& jsonData)
 {
-    qCDebug(lcProto) << "Invoking " << identifier << method << jsonData;
+    qCDebug(lcProcess) << "Invoking " << identifier << method << jsonData;
     QString data = "INVOKE " + identifier + " " + method + " " + QString::number(jsonData.length()) + "\n";
     write(data.toUtf8());
     write(jsonData + '\n');
@@ -155,7 +156,7 @@ void QBackendProcess::invokeMethod(const QByteArray& identifier, const QString& 
 // ### unsubscribe
 void QBackendProcess::subscribe(const QByteArray& identifier, QBackendRemoteObject* object)
 {
-    qCDebug(lcProto) << "Creating remote object handler " << identifier << " on connection " << this << " for " << object;
+    qCDebug(lcProcess) << "Creating remote object handler " << identifier << " on connection " << this << " for " << object;
     m_subscribedObjects[identifier] = object;
     QString data = "SUBSCRIBE " + identifier + "\n";
     write(data.toUtf8());

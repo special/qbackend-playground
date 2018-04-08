@@ -4,9 +4,12 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJSValue>
+#include <QLoggingCategory>
 
 #include "qbackendstore.h"
 #include "qbackendabstractconnection.h"
+
+Q_LOGGING_CATEGORY(lcStore, "backend.store")
 
 QBackendStore::QBackendStore(QObject *parent)
     : QObject(parent)
@@ -98,6 +101,7 @@ void QBackendStore::timerEvent(QTimerEvent *event)
         m_timerId = 0;
         QJsonObject obj;
         for (auto it = changedProperties.constBegin(); it != changedProperties.constEnd(); it++) {
+            qCDebug(lcStore) << "Requesting change on value " << it.key() << " on identifier " << m_identifier << " to " << it.value();
             obj.insert(it.key(), QJsonValue::fromVariant(it.value()));
         }
         m_connection->invokeMethod(m_identifier, "set", QJsonDocument(obj).toJson(QJsonDocument::Compact));
@@ -131,7 +135,7 @@ void QBackendStoreProxy::objectFound(const QJsonDocument& document)
 void QBackendStore::doReset(const QJsonDocument& document)
 {
     if (!document.isObject()) {
-        qWarning() << "Got a change that wasn't an object? " << document;
+        qCWarning(lcStore) << "Got a change that wasn't an object? " << document;
         return;
     }
 
@@ -148,6 +152,7 @@ void QBackendStore::doReset(const QJsonDocument& document)
 
         if (!currentValue.isNull() && (!previousValue.isValid()
                 || (currentValue.canConvert(previousValue.type()) && previousValue != currentValue))) {
+            qCDebug(lcStore) << "Got change on value " << property.name() << " on identifier " << m_identifier << " to " << currentValue;
             property.write(this, currentValue);
         }
     }
@@ -168,6 +173,6 @@ void QBackendStore::subscribeIfReady()
 
     m_proxy = new QBackendStoreProxy(this);
     m_connection->subscribe(m_identifier, m_proxy);
-    qDebug() << "Set store " << m_proxy << " for identifier " << m_identifier;
+    qCDebug(lcStore) << "Set store " << m_proxy << " for identifier " << m_identifier;
 }
 
