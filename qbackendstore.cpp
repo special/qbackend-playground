@@ -96,7 +96,11 @@ void QBackendStore::timerEvent(QTimerEvent *event)
     if (event->timerId() == m_timerId) {
         killTimer(m_timerId);
         m_timerId = 0;
-        qWarning() << "STORE TIMER";
+        QJsonObject obj;
+        for (auto it = changedProperties.constBegin(); it != changedProperties.constEnd(); it++) {
+            obj.insert(it.key(), QJsonValue::fromVariant(it.value()));
+        }
+        m_connection->invokeMethod(m_identifier, "set", QJsonDocument(obj).toJson(QJsonDocument::Compact));
         changedProperties.clear();
     }
     QObject::timerEvent(event);
