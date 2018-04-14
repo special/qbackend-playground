@@ -12,75 +12,7 @@ import (
 	"strings"
 )
 
-// current protocol..
-// sent from us:
-//
-// VERSION 1
-// MODEL foo firstName lastName (obsolete now UI has roles its side)
-// SYNCED (ui blocks until this point, but this isn't really needed anymore)
-//
-// APPEND foo 9
-// (json data)
-// UPDATE foo 9
-// (json data)
-// REMOVE foo 9
-//
-//
-// sent to us:
-//
-// INVOKE foo method 9
-// (json data)
-// -- invoke method on object
-//
-// OINVOKE foo method id 9
-// (json data)
-// -- invoke method on object, sub-object
-//
-////////////////////////////////////////////////////////////////////////////
-//
-// V2:
-//
-// -> VERSION 2
-// -> OBJECT_CREATE <uuid>
-// -> OBJECT_REGISTER <uuid> foo // register the uuid with this name for lookup
-// -> OBJECT_INVOKE <uuid> append 9
-// -> (json)
-// -> OBJECT_INVOKE <uuid> remove 9
-//
-// .....
-//
-// -> OBJECT_INVOKE <uuid> random 9
-// ... if it's not a model-internal method, it can then be passed to QML etc to
-// handle. imagine:
-//
-// -> OBJECT_INVOKE <uuid> fileTransferIncoming 9
-// (json)
-//
-// ... for notifications from the backend.
-//
-// Here, everything is an object. Objects that the system might want to interact
-// with as a "top level" item of interest are registered with a name so that
-// they might be found: think of models, or settings objects, ... -- we don't
-// codify any of their behaviour _at the protocol level_, instead, we just
-// define messages to introduce objects, destroy objects, and invoke methods on
-// them.
-//
-// The protocol for UI to backend would be virtually identical:
-// OBJECT_INVOKE <uuid> addNew
-// OBJECT_INVOKE <uuid> update...
-//
-// all of the logic for these would be left to the object itself.
-//
-// Messages:
-// VERSION 2
-// OBJECT_CREATE
-// OBJECT_UPDATE
-// OBJECT_REGISTER
-// OBJECT_DESTROY
-// OBJECT_INVOKE
-
 type Person struct {
-	UUID      uuid.UUID
 	FirstName string `json:"firstName"`
 	LastName  string `json:"lastName"`
 	Age       int    `json:"age,string"`
@@ -143,8 +75,8 @@ func main() {
 	pm.Publish("PersonModel")
 
 	gd := generalData{TestData: "Now connected", TotalPeople: pm.Length()}
-	pm.Append(Person{FirstName: "Robin", LastName: "Burchell", Age: 31, UUID: uuid.NewV4()})
-	pm.Append(Person{FirstName: "Kamilla", LastName: "Bremeraunet", Age: 30, UUID: uuid.NewV4()})
+	pm.Set(uuid.NewV4(), Person{FirstName: "Robin", LastName: "Burchell", Age: 31})
+	pm.Set(uuid.NewV4(), Person{FirstName: "Kamilla", LastName: "Bremeraunet", Age: 30})
 
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Split(scanLinesOrBlock)
@@ -178,7 +110,7 @@ func main() {
 
 			if parts[1] == "PersonModel" {
 				if parts[2] == "addNew" {
-					pm.Append(Person{FirstName: "Another", LastName: "Person", Age: 15 + pm.Length(), UUID: uuid.NewV4()})
+					pm.Set(uuid.NewV4(), Person{FirstName: "Another", LastName: "Person", Age: 15 + pm.Length()})
 					gd.TotalPeople = pm.Length()
 					qbackend.Create("generalData", gd)
 				}
@@ -190,31 +122,22 @@ func main() {
 					}
 					var removeCmd removeCommand
 					json.Unmarshal(jsonBlob, &removeCmd)
-					fmt.Printf("Removing %+v (from JSON blob %s)\n", removeCmd, jsonBlob)
-					for idx, v := range pm.Data {
-						p := v.(*Person)
-						if p.UUID == removeCmd.UUID {
-							pm.Data = append(pm.Data[0:idx], pm.Data[idx+1:]...)
-							qbackend.Create("PersonModel", pm)
-							break
-						}
-					}
+					pm.Remove(removeCmd.UUID)
 				} else if parts[2] == "update" {
-					var pobj Person
-					json.Unmarshal([]byte(jsonBlob), &pobj)
-					for idx, v := range pm.Data {
-						p := v.(*Person)
-						if p.UUID == pobj.UUID {
-							fmt.Printf("DEBUG %+v from %s\n", pobj, jsonBlob)
-							pm.Data[idx] = pobj
-							qbackend.Create("PersonModel", pm)
-							break
-						}
+					type updateCommand struct {
+						UUID   uuid.UUID `json:"UUID"`
+						Person Person    `json:"data"`
 					}
+					var updateCmd updateCommand
+					err := json.Unmarshal([]byte(jsonBlob), &updateCmd)
+					fmt.Printf("From blob %s, person is now %+v err %+v\n", jsonBlob, updateCmd.Person, err)
+					pm.Set(updateCmd.UUID, updateCmd.Person)
 				}
 			}
 
 			// Skip the JSON blob
 		}
 	}
+
+	fmt.Printf("Quitting?\n")
 }

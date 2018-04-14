@@ -4,9 +4,12 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QLoggingCategory>
 
 #include "qbackendabstractconnection.h"
 #include "qbackendlistmodel.h"
+
+Q_LOGGING_CATEGORY(lcListModel, "backend.listmodel")
 
 QBackendListModel::QBackendListModel(QObject *parent)
     : QAbstractListModel(parent)
@@ -74,29 +77,19 @@ QBackendListModelProxy::QBackendListModelProxy(QBackendListModel* model)
 
 void QBackendListModelProxy::objectFound(const QJsonDocument& document)
 {
-#if 0
-    Q_ASSERT(doc.isObject());
-    QJsonObject obj = doc.object();
-
-    QMap<QString, QVariant> data;
-
-    for (const QString& key : obj.keys()) {
-        data[key.toUtf8()] = obj.value(key).toVariant();
-    }
-#endif
     m_model->doReset(document);
 }
 
 void QBackendListModel::doReset(const QJsonDocument& document)
 {
-    qDebug() << "Resetting to " << document;
+    qCDebug(lcListModel) << "Resetting to " << document;
     beginResetModel();
     m_idMap.clear();
     m_data.clear();
 
     Q_ASSERT(document.isObject());
     if (!document.isObject()) {
-        qWarning() << "Got a document not an object: " << document;
+        qCWarning(lcListModel) << "Got a document not an object: " << document;
         endResetModel();
         return;
     }
@@ -104,81 +97,88 @@ void QBackendListModel::doReset(const QJsonDocument& document)
     QJsonObject dataObject = document.object();
     QJsonObject::const_iterator datait;
     if ((datait = dataObject.constFind("data")) == dataObject.constEnd()) {
-        qDebug() << "No data object found";
+        qCDebug(lcListModel) << "No data object found";
         endResetModel();
         return; // no rows
     }
 
-    Q_ASSERT(datait.value().isArray());
-    QJsonArray dataArray = datait.value().toArray();
+    Q_ASSERT(datait.value().isObject());
+    QJsonObject rowMap = datait.value().toObject();
 
-    if (dataArray.size() == 0) {
-        qDebug() << "Empty data object";
+    if (rowMap.size() == 0) {
+        qCDebug(lcListModel) << "Empty data object";
         endResetModel();
         return; // no rows
     }
 
-    for (int i = 0; i < dataArray.size(); ++i) {
-        if (!dataArray.at(i).isObject()) {
-            // uh.. ok
-            continue;
-        }
-
-        QJsonObject row = dataArray.at(i).toObject();
-        doAppend(row);
+    for (QJsonObject::const_iterator rowit = rowMap.constBegin(); rowit != rowMap.constEnd(); rowit++) {
+        Q_ASSERT(rowit.value().isObject());
+        QJsonObject row = rowit.value().toObject();
+        QUuid uuid = rowit.key().toUtf8();
+        doSet(uuid, row);
+        
     }
 
     endResetModel();
 }
 
-void QBackendListModel::doAppend(const QJsonObject& object, bool shouldEmit)
+void QBackendListModel::doSet(const QUuid& uuid, const QJsonObject& object, bool shouldEmit)
 {
     QMap<QByteArray, QVariant> objectData;
-    bool hasUuid = false;
-    QUuid uuid;
 
     for (QJsonObject::const_iterator propit = object.constBegin(); propit != object.constEnd(); propit++) {
-        if (propit.key() == "UUID") {
-            hasUuid = true;
-            uuid = propit.value().toString().toUtf8();
-        } else {
-            objectData[propit.key().toUtf8()] = propit.value().toVariant();
+        objectData[propit.key().toUtf8()] = propit.value().toVariant();
+    }
+
+    int rowIdx = -1;
+    if (shouldEmit) {
+        Q_ASSERT(!m_idMap.contains(uuid));
+        rowIdx = m_idMap.indexOf(uuid);
+    }
+
+    if (shouldEmit) {
+        if (rowIdx == -1) {
+            beginInsertRows(QModelIndex(), m_idMap.size(), m_idMap.size());
         }
     }
 
-    if (hasUuid) {
-        Q_ASSERT(!m_idMap.contains(uuid));
-
-        if (shouldEmit) {
-            beginInsertRows(QModelIndex(), m_idMap.size(), m_idMap.size());
-        }
+    if (rowIdx == -1) {
         m_idMap.append(uuid);
         m_data.append(objectData);
-        if (shouldEmit) {
+    } else {
+        m_data[rowIdx] = objectData;
+    }
+
+    if (shouldEmit) {
+        if (rowIdx == -1) {
             endInsertRows();
+        } else {
+            // ### roles
+            dataChanged(index(rowIdx), index(rowIdx));
         }
     }
 }
 
 void QBackendListModelProxy::methodInvoked(const QByteArray& method, const QJsonDocument& document)
 {
-    if (method == "append") {
+    if (method == "set") {
         // ### handle arrays, not just objects
         if (!document.isObject()) {
             // uh.. ok
-            qWarning() << "append without a valid object" << document;
+            qCWarning(lcListModel) << "set without a valid object" << document;
             return;
         }
 
-        qDebug() << "append" << document;
-        QJsonObject row = document.object();
-        m_model->doAppend(row, true);
-    }
-    if (method == "update") {
-        qWarning() << "update";
+        QJsonObject object = document.object();
+        QUuid uuid = object.value("UUID").toString().toUtf8();
+        QJsonObject data = object.value("data").toObject();
+
+        qCDebug(lcListModel) << "Updating " << uuid << " to data " << data;
+
+        m_model->doSet(uuid, data, true);
     }
     if (method == "remove") {
-        qWarning() << "remove";
+        qCWarning(lcListModel) << "remove";
     }
 
 #if 0
@@ -193,7 +193,7 @@ void QBackendListModel::onUpdated(const QVector<QUuid>& uuids, const QVector<QBa
 {
     // ### coalesce updates where possible
     for (const QUuid& uuid : uuids) {
-        qWarning() << "Updating " << uuid;
+        qCWarning(lcListModel) << "Updating " << uuid;
         int rowIdx = m_idMap.indexOf(uuid);
         Q_ASSERT(rowIdx != -1);
         emit dataChanged(index(rowIdx, 0), index(rowIdx, 0));
@@ -221,7 +221,7 @@ void QBackendListModel::onRemoved(const QVector<QUuid>& uuids)
         Q_ASSERT(rowIdx != -1);
 
         // ### not performant with a lot of removes
-        qWarning() << "Removing " << uuid << " row ID " << rowIdx;
+        qCWarning(lcListModel) << "Removing " << uuid << " row ID " << rowIdx;
         beginRemoveRows(QModelIndex(), rowIdx, rowIdx);
         m_idMap.remove(rowIdx);
         endRemoveRows();
@@ -263,7 +263,7 @@ void QBackendListModel::subscribeIfReady()
 
     m_roleNames[Qt::UserRole + m_roleNames.count()] = "_uuid";
 
-    qWarning() << "Set model " << m_proxy << " for identifier " << m_identifier << m_roleNames << " rows " << m_idMap.count();
+    qCWarning(lcListModel) << "Set model " << m_proxy << " for identifier " << m_identifier << m_roleNames << " rows " << m_idMap.count();
     endResetModel();
 }
 

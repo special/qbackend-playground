@@ -3,6 +3,7 @@ package qbackend
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/satori/go.uuid"
 )
 
 func Startup() {
@@ -22,7 +23,7 @@ func Emit(identifier string, method string, val interface{}) {
 }
 
 type JsonModel struct {
-	Data              []interface{} `json:"data"`
+	Data              map[uuid.UUID]interface{} `json:"data"`
 	name              string
 	subscriptionCount int
 }
@@ -35,6 +36,7 @@ func (this *JsonModel) Publish(name string) {
 		panic("Can't publish an empty name")
 	}
 	this.name = name
+	this.Data = make(map[uuid.UUID]interface{})
 }
 
 func (this *JsonModel) Subscribe() {
@@ -47,11 +49,25 @@ func (this *JsonModel) Subscribe() {
 	this.subscriptionCount += 1
 }
 
-func (this *JsonModel) Append(item interface{}) {
-	this.Data = append(this.Data, item)
+type setCommand struct {
+	UUID uuid.UUID   `json:"UUID"`
+	Data interface{} `json:"data"`
+}
+
+func (this *JsonModel) Set(uuid uuid.UUID, item interface{}) {
+	this.Data[uuid] = item
 	if this.subscriptionCount > 0 {
-		Emit(this.name, "append", item)
+		Emit(this.name, "set", setCommand{UUID: uuid, Data: item})
 	}
+}
+
+func (this *JsonModel) Get(uuid uuid.UUID) interface{} {
+	return this.Data[uuid]
+}
+
+func (this *JsonModel) Remove(uuid uuid.UUID) {
+	delete(this.Data, uuid)
+	Create("PersonModel", this)
 }
 
 func (this *JsonModel) Length() int {

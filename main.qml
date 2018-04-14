@@ -88,7 +88,7 @@ Item {
                     Button {
                         text: "Update"
                         onClicked: {
-                            var dat = {UUID: model._uuid, firstName: firstNameText.text, lastName: lastNameText.text, age: ageText.text}
+                            var dat = {UUID: model._uuid, data: { firstName: firstNameText.text, lastName: lastNameText.text, age: ageText.text} }
                             myData.invokeMethod("update", dat)
                             firstNameText.text = ""
                             lastNameText.text = ""

@@ -60,6 +60,11 @@ void QBackendProcess::componentComplete()
     // Start the process
     m_process.start("go", QStringList() << "run" << "test.go");
 
+    connect(&m_process, &QProcess::stateChanged, this, [=]() {
+        qWarning() << "State changed " << m_process.state();
+        qWarning() << m_process.readAllStandardError() << m_process.readAllStandardOutput();
+    });
+
     m_process.waitForStarted(); // ### kind of nasty
     if (m_pendingData.length()) {
         for (const QByteArray& data : m_pendingData) {
@@ -91,6 +96,7 @@ QJsonDocument QBackendProcess::readJsonBlob(int byteCount)
 
 void QBackendProcess::handleModelDataReady()
 {
+    qWarning() << m_process.readAllStandardError();
     while (m_process.canReadLine()) {
         qCDebug(lcProtoExtreme) << "Reading...";
         QByteArray cmdBuf = m_process.readLine();
