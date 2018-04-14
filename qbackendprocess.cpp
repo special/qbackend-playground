@@ -63,8 +63,10 @@ void QBackendProcess::componentComplete()
     m_process.start("go", QStringList() << "run" << "test.go");
 
     connect(&m_process, &QProcess::stateChanged, this, [=]() {
-        qWarning() << "State changed " << m_process.state();
-        qWarning() << m_process.readAllStandardError() << m_process.readAllStandardOutput();
+        qCWarning(lcProcess) << "State changed " << m_process.state();
+        if (m_process.state() != QProcess::Running) {
+            qCWarning(lcProcess) << m_process.readAllStandardError() << m_process.readAllStandardOutput();
+        }
     });
 
     m_process.waitForStarted(); // ### kind of nasty
@@ -91,7 +93,7 @@ QJsonDocument QBackendProcess::readJsonBlob(int byteCount)
     QJsonParseError pe;
     QJsonDocument doc = QJsonDocument::fromJson(cmdBuf, &pe);
     if (doc.isNull()) {
-        qWarning() << "Bad blob: " << cmdBuf << pe.errorString();
+        qCWarning(lcProto) << "Bad blob: " << cmdBuf << pe.errorString();
     }
     return doc;
 }
