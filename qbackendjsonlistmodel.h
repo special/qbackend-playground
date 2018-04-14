@@ -6,16 +6,16 @@
 
 #include "qbackendabstractconnection.h"
 
-class QBackendListModelProxy;
+class QBackendJsonListModelProxy;
 
-class QBackendListModel : public QAbstractListModel
+class QBackendJsonListModel : public QAbstractListModel
 {
     Q_OBJECT
     Q_PROPERTY(QByteArray identifier READ identifier WRITE setIdentifier NOTIFY identifierChanged)
     Q_PROPERTY(QStringList roles READ roles WRITE setRoles NOTIFY roleNamesChanged)
     Q_PROPERTY(QBackendAbstractConnection* connection READ connection WRITE setConnection NOTIFY connectionChanged)
 public:
-    QBackendListModel(QObject *parent = 0);
+    QBackendJsonListModel(QObject *parent = 0);
 
     QByteArray identifier() const;
     void setIdentifier(const QByteArray& identifier);
@@ -44,12 +44,12 @@ private:
     QHash<int, QByteArray> m_roleNames;
     QVector<QUuid> m_idMap;
     QVector<QMap<QByteArray, QVariant>> m_data;
-    QBackendListModelProxy *m_proxy = nullptr;
+    QBackendJsonListModelProxy *m_proxy = nullptr;
     QBackendAbstractConnection *m_connection = nullptr;
 
     void subscribeIfReady();
 
-    friend class QBackendListModelProxy;
+    friend class QBackendJsonListModelProxy;
     void doReset(const QJsonDocument& document);
     void doSet(const QUuid& uuid, const QJsonObject& object, bool shouldEmit = false);
     void doRemove(const QUuid& uuid);

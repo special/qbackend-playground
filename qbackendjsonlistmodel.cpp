@@ -7,22 +7,22 @@
 #include <QLoggingCategory>
 
 #include "qbackendabstractconnection.h"
-#include "qbackendlistmodel.h"
+#include "qbackendjsonlistmodel.h"
 
 Q_LOGGING_CATEGORY(lcListModel, "backend.listmodel")
 
-QBackendListModel::QBackendListModel(QObject *parent)
+QBackendJsonListModel::QBackendJsonListModel(QObject *parent)
     : QAbstractListModel(parent)
 {
 }
 
-QBackendAbstractConnection* QBackendListModel::connection() const
+QBackendAbstractConnection* QBackendJsonListModel::connection() const
 {
     return m_connection;
 }
 
 // ### error on componentComplete if not set
-void QBackendListModel::setConnection(QBackendAbstractConnection* connection)
+void QBackendJsonListModel::setConnection(QBackendAbstractConnection* connection)
 {
     if (connection == m_connection) {
         return;
@@ -35,13 +35,13 @@ void QBackendListModel::setConnection(QBackendAbstractConnection* connection)
     emit connectionChanged();
 }
 
-QStringList QBackendListModel::roles() const
+QStringList QBackendJsonListModel::roles() const
 {
     return m_flatRoleNames;
 }
 
 // ### error on componentComplete if not set
-void QBackendListModel::setRoles(const QStringList &roleNames)
+void QBackendJsonListModel::setRoles(const QStringList &roleNames)
 {
     if (roleNames == m_flatRoleNames) {
         return;
@@ -54,33 +54,33 @@ void QBackendListModel::setRoles(const QStringList &roleNames)
     emit roleNamesChanged();
 }
 
-QByteArray QBackendListModel::identifier() const
+QByteArray QBackendJsonListModel::identifier() const
 {
     return m_identifier;
 }
 
-class QBackendListModelProxy : public QBackendRemoteObject
+class QBackendJsonListModelProxy : public QBackendRemoteObject
 {
 public:
-    QBackendListModelProxy(QBackendListModel* model);
+    QBackendJsonListModelProxy(QBackendJsonListModel* model);
     void objectFound(const QJsonDocument& document) override;
     void methodInvoked(const QByteArray& method, const QJsonDocument& document) override;
 
 private:
-    QBackendListModel *m_model = nullptr;
+    QBackendJsonListModel *m_model = nullptr;
 };
 
-QBackendListModelProxy::QBackendListModelProxy(QBackendListModel* model)
+QBackendJsonListModelProxy::QBackendJsonListModelProxy(QBackendJsonListModel* model)
     : m_model(model)
 {
 }
 
-void QBackendListModelProxy::objectFound(const QJsonDocument& document)
+void QBackendJsonListModelProxy::objectFound(const QJsonDocument& document)
 {
     m_model->doReset(document);
 }
 
-void QBackendListModel::doReset(const QJsonDocument& document)
+void QBackendJsonListModel::doReset(const QJsonDocument& document)
 {
     qCDebug(lcListModel) << "Resetting to " << document;
     beginResetModel();
@@ -122,7 +122,7 @@ void QBackendListModel::doReset(const QJsonDocument& document)
     endResetModel();
 }
 
-void QBackendListModel::doSet(const QUuid& uuid, const QJsonObject& object, bool shouldEmit)
+void QBackendJsonListModel::doSet(const QUuid& uuid, const QJsonObject& object, bool shouldEmit)
 {
     QMap<QByteArray, QVariant> objectData;
 
@@ -159,7 +159,7 @@ void QBackendListModel::doSet(const QUuid& uuid, const QJsonObject& object, bool
     }
 }
 
-void QBackendListModel::doRemove(const QUuid& uuid)
+void QBackendJsonListModel::doRemove(const QUuid& uuid)
 {
     int rowIdx = m_idMap.indexOf(uuid);
     Q_ASSERT(rowIdx != -1);
@@ -171,7 +171,7 @@ void QBackendListModel::doRemove(const QUuid& uuid)
     endRemoveRows();
 }
 
-void QBackendListModelProxy::methodInvoked(const QByteArray& method, const QJsonDocument& document)
+void QBackendJsonListModelProxy::methodInvoked(const QByteArray& method, const QJsonDocument& document)
 {
     if (method == "set") {
         // ### handle arrays, not just objects
@@ -204,7 +204,7 @@ void QBackendListModelProxy::methodInvoked(const QByteArray& method, const QJson
 }
 
 // ### error on componentComplete if not set
-void QBackendListModel::setIdentifier(const QByteArray& id)
+void QBackendJsonListModel::setIdentifier(const QByteArray& id)
 {
     if (m_identifier == id) {
         return;
@@ -214,7 +214,7 @@ void QBackendListModel::setIdentifier(const QByteArray& id)
     subscribeIfReady();
 }
 
-void QBackendListModel::subscribeIfReady()
+void QBackendJsonListModel::subscribeIfReady()
 {
     if (!m_connection || m_identifier.isEmpty()) {
         return;
@@ -223,7 +223,7 @@ void QBackendListModel::subscribeIfReady()
     Q_ASSERT(!m_proxy);
 
     beginResetModel();
-    m_proxy = new QBackendListModelProxy(this);
+    m_proxy = new QBackendJsonListModelProxy(this);
     m_connection->subscribe(m_identifier, m_proxy);
 
     m_roleNames.clear();
@@ -240,7 +240,7 @@ void QBackendListModel::subscribeIfReady()
     endResetModel();
 }
 
-void QBackendListModel::invokeMethod(const QString& method, const QJSValue& data)
+void QBackendJsonListModel::invokeMethod(const QString& method, const QJSValue& data)
 {
     QJSEngine *engine = qmlEngine(this);
     QJSValue global = engine->globalObject();
@@ -250,17 +250,17 @@ void QBackendListModel::invokeMethod(const QString& method, const QJSValue& data
     m_connection->invokeMethod(m_identifier, method, jsonData.toString().toUtf8());
 }
 
-QHash<int, QByteArray> QBackendListModel::roleNames() const
+QHash<int, QByteArray> QBackendJsonListModel::roleNames() const
 {
     return m_roleNames;
 }
 
-int QBackendListModel::rowCount(const QModelIndex&) const
+int QBackendJsonListModel::rowCount(const QModelIndex&) const
 {
     return m_idMap.size();
 }
 
-QVariant QBackendListModel::data(const QModelIndex &index, int role) const
+QVariant QBackendJsonListModel::data(const QModelIndex &index, int role) const
 {
     if (role == Qt::UserRole + m_roleNames.count() - 1) {
         // uuid request

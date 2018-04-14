@@ -25,7 +25,7 @@ Item {
         width: parent.width
         anchors.top: headerRow.bottom
         anchors.bottom: bottomRow.top
-        model: BackendListModel {
+        model: BackendJsonListModel {
             id: myData
             connection: backendProcess
             identifier: "PersonModel"
