@@ -6,6 +6,8 @@
 
 #include "qbackendprocess.h"
 
+// #define PROTO_DEBUG
+
 Q_LOGGING_CATEGORY(lcProcess, "backend.process")
 Q_LOGGING_CATEGORY(lcProto, "backend.proto")
 Q_LOGGING_CATEGORY(lcProtoExtreme, "backend.proto.extreme", QtWarningMsg)
@@ -96,7 +98,6 @@ QJsonDocument QBackendProcess::readJsonBlob(int byteCount)
 
 void QBackendProcess::handleModelDataReady()
 {
-    qWarning() << m_process.readAllStandardError();
     while (m_process.canReadLine()) {
         qCDebug(lcProtoExtreme) << "Reading...";
         QByteArray cmdBuf = m_process.readLine();
@@ -105,7 +106,9 @@ void QBackendProcess::handleModelDataReady()
             continue;
         }
 
+#if defined(PROTO_DEBUG)
         qCDebug(lcProto) << "Read " << cmdBuf;
+#endif
         if (cmdBuf.startsWith("VERSION ")) {
             // First, remove the newline.
             cmdBuf.truncate(cmdBuf.length() - 1);
@@ -154,7 +157,9 @@ void QBackendProcess::write(const QByteArray& data)
         return;
     }
 
+#if defined(PROTO_DEBUG)
     qCDebug(lcProto) << "Writing " << data;
+#endif
     m_process.write(data);
 }
 

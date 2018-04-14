@@ -82,7 +82,7 @@ void QBackendJsonListModelProxy::objectFound(const QJsonDocument& document)
 
 void QBackendJsonListModel::doReset(const QJsonDocument& document)
 {
-    qCDebug(lcListModel) << "Resetting to " << document;
+    qCDebug(lcListModel) << "Resetting" << m_identifier;
     beginResetModel();
     m_idMap.clear();
     m_data.clear();
@@ -236,7 +236,6 @@ void QBackendJsonListModel::subscribeIfReady()
 
     m_roleNames[Qt::UserRole + m_roleNames.count()] = "_uuid";
 
-    qCWarning(lcListModel) << "Set model " << m_proxy << " for identifier " << m_identifier << m_roleNames << " rows " << m_idMap.count();
     endResetModel();
 }
 

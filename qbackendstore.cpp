@@ -173,6 +173,5 @@ void QBackendStore::subscribeIfReady()
 
     m_proxy = new QBackendStoreProxy(this);
     m_connection->subscribe(m_identifier, m_proxy);
-    qCDebug(lcStore) << "Set store " << m_proxy << " for identifier " << m_identifier;
 }
 

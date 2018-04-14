@@ -33,7 +33,7 @@ func dropCR(data []byte) []byte {
 // Hack to make Scanner give us line by line data, or a block of byteCnt bytes.
 func scanLinesOrBlock(data []byte, atEOF bool) (advance int, token []byte, err error) {
 	if scanningForDataLength {
-		fmt.Printf("DEBUG Want %d got %d\n", byteCnt, len(data))
+		//fmt.Printf("DEBUG Want %d got %d\n", byteCnt, len(data))
 		if len(data) < int(byteCnt) {
 			return 0, nil, nil
 		}
@@ -83,7 +83,7 @@ func main() {
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		fmt.Println(fmt.Sprintf("DEBUG %s", line))
+		//fmt.Println(fmt.Sprintf("DEBUG %s", line))
 
 		if strings.HasPrefix(line, "SUBSCRIBE ") {
 			parts := strings.Split(line, " ")
@@ -95,7 +95,7 @@ func main() {
 		} else if strings.HasPrefix(line, "INVOKE ") {
 			parts := strings.Split(line, " ")
 			if len(parts) < 4 {
-				fmt.Println(fmt.Sprintf("DEBUG %s too short!", line))
+				panic("too short")
 				continue
 			}
 
