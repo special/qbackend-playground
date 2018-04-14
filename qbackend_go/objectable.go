@@ -26,6 +26,8 @@ type JsonModel struct {
 	Data              map[uuid.UUID]interface{} `json:"data"`
 	name              string
 	subscriptionCount int
+	SetHook           func(uuid.UUID, interface{}) `json:"-"`
+	RemoveHook        func(uuid.UUID)              `json:"-"`
 }
 
 func (this *JsonModel) Publish(name string) {
@@ -55,14 +57,18 @@ type setCommand struct {
 }
 
 func (this *JsonModel) Set(uuid uuid.UUID, item interface{}) {
+	if this.SetHook != nil {
+		this.SetHook(uuid, item)
+	}
 	this.Data[uuid] = item
 	if this.subscriptionCount > 0 {
 		Emit(this.name, "set", setCommand{UUID: uuid, Data: item})
 	}
 }
 
-func (this *JsonModel) Get(uuid uuid.UUID) interface{} {
-	return this.Data[uuid]
+func (this *JsonModel) Get(uuid uuid.UUID) (interface{}, bool) {
+	v, ok := this.Data[uuid]
+	return v, ok
 }
 
 type removeCommand struct {
@@ -70,6 +76,9 @@ type removeCommand struct {
 }
 
 func (this *JsonModel) Remove(uuid uuid.UUID) {
+	if this.RemoveHook != nil {
+		this.RemoveHook(uuid)
+	}
 	delete(this.Data, uuid)
 	if this.subscriptionCount > 0 {
 		Emit(this.name, "remove", removeCommand{UUID: uuid})

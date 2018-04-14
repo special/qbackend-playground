@@ -71,10 +71,26 @@ type PersonModel struct {
 func main() {
 	qbackend.Startup()
 
+	gd := generalData{TestData: "Now connected", TotalPeople: 0}
+
 	pm := &PersonModel{}
+	pm.JsonModel = qbackend.JsonModel{
+		SetHook: func(uuid uuid.UUID, value interface{}) {
+			_, ok := pm.Get(uuid)
+			if ok {
+				return
+			} else {
+				gd.TotalPeople++
+				qbackend.Create("generalData", gd)
+			}
+		},
+		RemoveHook: func(uuid uuid.UUID) {
+			gd.TotalPeople--
+			qbackend.Create("generalData", gd)
+		},
+	}
 	pm.Publish("PersonModel")
 
-	gd := generalData{TestData: "Now connected", TotalPeople: pm.Length()}
 	pm.Set(uuid.NewV4(), Person{FirstName: "Robin", LastName: "Burchell", Age: 31})
 	pm.Set(uuid.NewV4(), Person{FirstName: "Kamilla", LastName: "Bremeraunet", Age: 30})
 
@@ -111,8 +127,6 @@ func main() {
 			if parts[1] == "PersonModel" {
 				if parts[2] == "addNew" {
 					pm.Set(uuid.NewV4(), Person{FirstName: "Another", LastName: "Person", Age: 15 + pm.Length()})
-					gd.TotalPeople = pm.Length()
-					qbackend.Create("generalData", gd)
 				}
 
 				// ### must be a model member for now
