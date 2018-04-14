@@ -79,10 +79,6 @@ import (
 // OBJECT_DESTROY
 // OBJECT_INVOKE
 
-type PersonModel struct {
-	People []Person `json:"data"`
-}
-
 type Person struct {
 	UUID      uuid.UUID
 	FirstName string `json:"firstName"`
@@ -136,14 +132,19 @@ type generalData struct {
 	TotalPeople int    `json:"totalPeople"`
 }
 
+type PersonModel struct {
+	qbackend.JsonModel
+}
+
 func main() {
 	qbackend.Startup()
 
 	pm := &PersonModel{}
-	gd := generalData{TestData: "Now connected", TotalPeople: len(pm.People)}
-	r := Person{FirstName: "Robin", LastName: "Burchell", Age: 31, UUID: uuid.NewV4()}
-	k := Person{FirstName: "Kamilla", LastName: "Bremeraunet", Age: 30, UUID: uuid.NewV4()}
-	pm.People = append(pm.People, r, k)
+	pm.Publish("PersonModel")
+
+	gd := generalData{TestData: "Now connected", TotalPeople: pm.Length()}
+	pm.Append(Person{FirstName: "Robin", LastName: "Burchell", Age: 31, UUID: uuid.NewV4()})
+	pm.Append(Person{FirstName: "Kamilla", LastName: "Bremeraunet", Age: 30, UUID: uuid.NewV4()})
 
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Split(scanLinesOrBlock)
@@ -155,7 +156,7 @@ func main() {
 		if strings.HasPrefix(line, "SUBSCRIBE ") {
 			parts := strings.Split(line, " ")
 			if parts[1] == "PersonModel" {
-				qbackend.Create("PersonModel", pm)
+				pm.Subscribe()
 			} else if parts[1] == "generalData" {
 				qbackend.Create("generalData", gd)
 			}
@@ -177,10 +178,8 @@ func main() {
 
 			if parts[1] == "PersonModel" {
 				if parts[2] == "addNew" {
-					p := Person{FirstName: "Another", LastName: "Person", Age: 15 + len(pm.People), UUID: uuid.NewV4()}
-					pm.People = append(pm.People, p)
-					qbackend.Create("PersonModel", pm)
-					gd.TotalPeople = len(pm.People)
+					pm.Append(Person{FirstName: "Another", LastName: "Person", Age: 15 + pm.Length(), UUID: uuid.NewV4()})
+					gd.TotalPeople = pm.Length()
 					qbackend.Create("generalData", gd)
 				}
 
@@ -192,9 +191,10 @@ func main() {
 					var removeCmd removeCommand
 					json.Unmarshal(jsonBlob, &removeCmd)
 					fmt.Printf("Removing %+v (from JSON blob %s)\n", removeCmd, jsonBlob)
-					for idx, p := range pm.People {
+					for idx, v := range pm.Data {
+						p := v.(*Person)
 						if p.UUID == removeCmd.UUID {
-							pm.People = append(pm.People[0:idx], pm.People[idx+1:]...)
+							pm.Data = append(pm.Data[0:idx], pm.Data[idx+1:]...)
 							qbackend.Create("PersonModel", pm)
 							break
 						}
@@ -202,10 +202,11 @@ func main() {
 				} else if parts[2] == "update" {
 					var pobj Person
 					json.Unmarshal([]byte(jsonBlob), &pobj)
-					for idx, p := range pm.People {
+					for idx, v := range pm.Data {
+						p := v.(*Person)
 						if p.UUID == pobj.UUID {
 							fmt.Printf("DEBUG %+v from %s\n", pobj, jsonBlob)
-							pm.People[idx] = pobj
+							pm.Data[idx] = pobj
 							qbackend.Create("PersonModel", pm)
 							break
 						}

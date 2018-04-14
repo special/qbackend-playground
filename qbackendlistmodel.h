@@ -51,5 +51,6 @@ private:
 
     friend class QBackendListModelProxy;
     void doReset(const QJsonDocument& document);
+    void doAppend(const QJsonObject& object, bool shouldEmit = false);
 };
 

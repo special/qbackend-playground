@@ -120,15 +120,22 @@ void QBackendProcess::handleModelDataReady()
             } else {
                 qCWarning(lcProcess) << "Got creation for unsubscribed identifier: " << identifier << doc;
             }
-        } else if (cmdBuf.startsWith("OBJECT_INVOKE ")) {
+        } else if (cmdBuf.startsWith("EMIT ")) {
             // First, remove the newline.
             cmdBuf.truncate(cmdBuf.length() - 1);
 
             QList<QByteArray> parts = cmdBuf.split(' ');
             Q_ASSERT(parts.length() == 3);
+            QByteArray identifier = QByteArray(parts[1]);
 
             QJsonDocument doc = readJsonBlob(parts[3].toInt());
-            qCDebug(lcProcess) << "Invoke " << parts[2] << " on " << parts[1] << doc.toVariant();
+
+            if (m_subscribedObjects.contains(identifier)) {
+                qCDebug(lcProcess) << "Emit " << parts[2] << " on " << parts[1] << doc.toVariant();
+                m_subscribedObjects[identifier]->methodInvoked(parts[2], doc);
+            } else {
+                qCWarning(lcProcess) << "Got method emit for unsubscribed identifier: " << identifier << doc;
+            }
         }
     }
 }

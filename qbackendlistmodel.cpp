@@ -125,39 +125,54 @@ void QBackendListModel::doReset(const QJsonDocument& document)
         }
 
         QJsonObject row = dataArray.at(i).toObject();
-        QMap<QByteArray, QVariant> rowData;
-        bool hasUuid = false;
-
-        for (QJsonObject::const_iterator rowit = row.constBegin(); rowit != row.constEnd(); rowit++) {
-            if (rowit.key() == "UUID") {
-                m_idMap.append(QUuid(rowit.value().toString().toUtf8()));
-                hasUuid = true;
-            } else {
-                rowData[rowit.key().toUtf8()] = rowit.value().toVariant();
-            }
-        }
-
-        if (hasUuid) {
-            m_data.append(rowData);
-        }
+        doAppend(row);
     }
 
     endResetModel();
 }
 
+void QBackendListModel::doAppend(const QJsonObject& object, bool shouldEmit)
+{
+    QMap<QByteArray, QVariant> objectData;
+    bool hasUuid = false;
+    QUuid uuid;
+
+    for (QJsonObject::const_iterator propit = object.constBegin(); propit != object.constEnd(); propit++) {
+        if (propit.key() == "UUID") {
+            hasUuid = true;
+            uuid = propit.value().toString().toUtf8();
+        } else {
+            objectData[propit.key().toUtf8()] = propit.value().toVariant();
+        }
+    }
+
+    if (hasUuid) {
+        Q_ASSERT(!m_idMap.contains(uuid));
+
+        if (shouldEmit) {
+            beginInsertRows(QModelIndex(), m_idMap.size(), m_idMap.size());
+        }
+        m_idMap.append(uuid);
+        m_data.append(objectData);
+        if (shouldEmit) {
+            endInsertRows();
+        }
+    }
+}
+
 void QBackendListModelProxy::methodInvoked(const QByteArray& method, const QJsonDocument& document)
 {
     if (method == "append") {
-        qWarning() << "append";
-#if 0
-    beginInsertRows(QModelIndex(), m_idMap.size(), m_idMap.size() + uuids.length() - 1);
-    for (const QUuid& uuid : uuids) {
-        qWarning() << "Appending " << uuid;
-        Q_ASSERT(!m_idMap.contains(uuid));
-        m_idMap.append(uuid);
-    }
-    endInsertRows();
-#endif
+        // ### handle arrays, not just objects
+        if (!document.isObject()) {
+            // uh.. ok
+            qWarning() << "append without a valid object" << document;
+            return;
+        }
+
+        qDebug() << "append" << document;
+        QJsonObject row = document.object();
+        m_model->doAppend(row, true);
     }
     if (method == "update") {
         qWarning() << "update";
