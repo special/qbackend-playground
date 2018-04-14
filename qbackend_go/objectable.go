@@ -65,9 +65,15 @@ func (this *JsonModel) Get(uuid uuid.UUID) interface{} {
 	return this.Data[uuid]
 }
 
+type removeCommand struct {
+	UUID uuid.UUID `json:"UUID"`
+}
+
 func (this *JsonModel) Remove(uuid uuid.UUID) {
 	delete(this.Data, uuid)
-	Create("PersonModel", this)
+	if this.subscriptionCount > 0 {
+		Emit(this.name, "remove", removeCommand{UUID: uuid})
+	}
 }
 
 func (this *JsonModel) Length() int {

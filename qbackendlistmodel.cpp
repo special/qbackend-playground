@@ -159,6 +159,18 @@ void QBackendListModel::doSet(const QUuid& uuid, const QJsonObject& object, bool
     }
 }
 
+void QBackendListModel::doRemove(const QUuid& uuid)
+{
+    int rowIdx = m_idMap.indexOf(uuid);
+    Q_ASSERT(rowIdx != -1);
+
+    // ### not performant with a lot of removes
+    qCWarning(lcListModel) << "Removing " << uuid << " row ID " << rowIdx;
+    beginRemoveRows(QModelIndex(), rowIdx, rowIdx);
+    m_idMap.remove(rowIdx);
+    endRemoveRows();
+}
+
 void QBackendListModelProxy::methodInvoked(const QByteArray& method, const QJsonDocument& document)
 {
     if (method == "set") {
@@ -176,58 +188,19 @@ void QBackendListModelProxy::methodInvoked(const QByteArray& method, const QJson
         qCDebug(lcListModel) << "Updating " << uuid << " to data " << data;
 
         m_model->doSet(uuid, data, true);
-    }
-    if (method == "remove") {
+    } else if (method == "remove") {
         qCWarning(lcListModel) << "remove";
+        // ### handle arrays, not just objects
+        if (!document.isObject()) {
+            // uh.. ok
+            qCWarning(lcListModel) << "set without a valid object" << document;
+            return;
+        }
+
+        QJsonObject object = document.object();
+        QUuid uuid = object.value("UUID").toString().toUtf8();
+        m_model->doRemove(uuid);
     }
-
-#if 0
-    for (const QUuid& uuid : m_model->keys()) {
-        m_idMap.append(uuid);
-    }
-void QBackendListModel::onAboutToUpdate(const QVector<QUuid>& uuids, const QVector<QBackendModel::QBackendRowData>& oldDatas, const QVector<QBackendModel::QBackendRowData>& newDatas)
-{
-}
-
-void QBackendListModel::onUpdated(const QVector<QUuid>& uuids, const QVector<QBackendModel::QBackendRowData>& oldDatas, const QVector<QBackendModel::QBackendRowData>& newDatas)
-{
-    // ### coalesce updates where possible
-    for (const QUuid& uuid : uuids) {
-        qCWarning(lcListModel) << "Updating " << uuid;
-        int rowIdx = m_idMap.indexOf(uuid);
-        Q_ASSERT(rowIdx != -1);
-        emit dataChanged(index(rowIdx, 0), index(rowIdx, 0));
-    }
-}
-
-void QBackendListModel::onAboutToAdd(const QVector<QUuid>& uuids, const QVector<QBackendModel::QBackendRowData>& datas)
-{
-
-}
-
-void QBackendListModel::onAdded(const QVector<QUuid>& uuids, const QVector<QBackendModel::QBackendRowData>& datas)
-{
-}
-
-void QBackendListModel::onAboutToRemove(const QVector<QUuid>& uuids)
-{
-
-}
-
-void QBackendListModel::onRemoved(const QVector<QUuid>& uuids)
-{
-    for (const QUuid& uuid : uuids) {
-        int rowIdx = m_idMap.indexOf(uuid);
-        Q_ASSERT(rowIdx != -1);
-
-        // ### not performant with a lot of removes
-        qCWarning(lcListModel) << "Removing " << uuid << " row ID " << rowIdx;
-        beginRemoveRows(QModelIndex(), rowIdx, rowIdx);
-        m_idMap.remove(rowIdx);
-        endRemoveRows();
-    }
-}
-#endif
 }
 
 // ### error on componentComplete if not set
