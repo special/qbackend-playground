@@ -11,7 +11,7 @@ Item {
         property string testData: "Connecting..."
         property int totalPeople: 0
         connection: backendProcess
-        identifier: "generalData"
+        identifier: "GeneralData"
     }
 
     BackendProcess {

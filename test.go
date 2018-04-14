@@ -60,6 +60,7 @@ func scanLinesOrBlock(data []byte, atEOF bool) (advance int, token []byte, err e
 }
 
 type generalData struct {
+	qbackend.Store
 	TestData    string `json:"testData"`
 	TotalPeople int    `json:"totalPeople"`
 }
@@ -71,7 +72,9 @@ type PersonModel struct {
 func main() {
 	qbackend.Startup()
 
-	gd := generalData{TestData: "Now connected", TotalPeople: 0}
+	gd := &generalData{TestData: "Now connected", TotalPeople: 0}
+	gd.Publish("GeneralData")
+	gd.Update(gd)
 
 	pm := &PersonModel{}
 	pm.JsonModel = qbackend.JsonModel{
@@ -81,12 +84,12 @@ func main() {
 				return
 			} else {
 				gd.TotalPeople++
-				qbackend.Create("generalData", gd)
+				gd.Update(gd)
 			}
 		},
 		RemoveHook: func(uuid uuid.UUID) {
 			gd.TotalPeople--
-			qbackend.Create("generalData", gd)
+			gd.Update(gd)
 		},
 	}
 	pm.Publish("PersonModel")
@@ -105,8 +108,8 @@ func main() {
 			parts := strings.Split(line, " ")
 			if parts[1] == "PersonModel" {
 				pm.Subscribe()
-			} else if parts[1] == "generalData" {
-				qbackend.Create("generalData", gd)
+			} else if parts[1] == "GeneralData" {
+				gd.Subscribe()
 			}
 		} else if strings.HasPrefix(line, "INVOKE ") {
 			parts := strings.Split(line, " ")
