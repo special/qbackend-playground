@@ -168,6 +168,7 @@ void QBackendJsonListModel::doRemove(const QUuid& uuid)
     qCWarning(lcListModel) << "Removing " << uuid << " row ID " << rowIdx;
     beginRemoveRows(QModelIndex(), rowIdx, rowIdx);
     m_idMap.remove(rowIdx);
+    m_data.remove(rowIdx);
     endRemoveRows();
 }
 
