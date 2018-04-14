@@ -5,14 +5,6 @@ import (
 	"fmt"
 )
 
-type Objectable interface {
-	// Sets up an object with a given known identifier.
-	Publish(identifier string)
-
-	// Notifies the Objectable of a remote subscriber.
-	Subscribe()
-}
-
 func Startup() {
 	fmt.Println("VERSION 2")
 }
