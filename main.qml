@@ -8,8 +8,6 @@ Item {
 
     BackendStore {
         id: dataStore
-        property string testData: "Connecting..."
-        property int totalPeople: 0
         connection: backendProcess
         identifier: "GeneralData"
     }
@@ -111,7 +109,13 @@ Item {
 
             Label {
                 color: "white"
-                text: dataStore.testData + " ; people: " + dataStore.totalPeople
+                text: {
+                    if (dataStore.data) {
+                        return dataStore.data.testData + " ; people: " + dataStore.data.totalPeople
+                    } else {
+                        return "Connecting..."
+                    }
+                }
                 anchors.centerIn: parent
                 font.bold: true
                 font.pixelSize: headerRow.height/2
