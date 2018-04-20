@@ -1,15 +1,16 @@
 package main
 
 import (
-	qbackend "./qbackend_go"
 	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/satori/go.uuid"
 	"os"
 	"strconv"
 	"strings"
+
+	qbackend "./qbackend_go"
+	"github.com/satori/go.uuid"
 )
 
 type Person struct {
@@ -94,8 +95,10 @@ func main() {
 	}
 	pm.Publish("PersonModel")
 
-	pm.Set(uuid.NewV4(), Person{FirstName: "Robin", LastName: "Burchell", Age: 31})
-	pm.Set(uuid.NewV4(), Person{FirstName: "Kamilla", LastName: "Bremeraunet", Age: 30})
+	u, _ := uuid.NewV4()
+	pm.Set(u, Person{FirstName: "Robin", LastName: "Burchell", Age: 31})
+	u, _ = uuid.NewV4()
+	pm.Set(u, Person{FirstName: "Kamilla", LastName: "Bremeraunet", Age: 30})
 
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Split(scanLinesOrBlock)
@@ -129,7 +132,8 @@ func main() {
 
 			if parts[1] == "PersonModel" {
 				if parts[2] == "addNew" {
-					pm.Set(uuid.NewV4(), Person{FirstName: "Another", LastName: "Person", Age: 15 + pm.Length()})
+					u, _ := uuid.NewV4()
+					pm.Set(u, Person{FirstName: "Another", LastName: "Person", Age: 15 + pm.Length()})
 				}
 
 				// ### must be a model member for now
