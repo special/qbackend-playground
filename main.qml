@@ -56,8 +56,7 @@ Item {
                         text: "Remove"
 
                         onClicked: {
-                            var data = { UUID: model._uuid }
-                            myData.invokeMethod("remove", data)
+                            myData.invokeMethod("remove", [ model._uuid ])
                         }
                     }
                 }
@@ -86,8 +85,8 @@ Item {
                     Button {
                         text: "Update"
                         onClicked: {
-                            var dat = {UUID: model._uuid, data: { firstName: firstNameText.text, lastName: lastNameText.text, age: ageText.text} }
-                            myData.invokeMethod("update", dat)
+                            var dat = { firstName: firstNameText.text, lastName: lastNameText.text, age: ageText.text }
+                            myData.invokeMethod("set", [ model._uuid, dat ])
                             firstNameText.text = ""
                             lastNameText.text = ""
                             ageText.text = ""
@@ -133,7 +132,7 @@ Item {
             width: parent.width
             text: "Add"
             onClicked: {
-                myData.invokeMethod("addNew")
+                myData.invokeMethod("addNew", [])
             }
         }
     }
