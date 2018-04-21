@@ -1,6 +1,6 @@
 import QtQuick 2.6
 import QtQuick.Controls 2.2
-import com.me 1.0
+import qbackend 1.0
 
 Item {
     width: 500

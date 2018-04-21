@@ -1,4 +1,5 @@
 *.o
+*.so
 *.qmlc
 moc_*
 Makefile
