@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	qbackend "./go"
+	"github.com/CrimsonAS/qbackend/go"
 	uuid "github.com/satori/go.uuid"
 )
 
