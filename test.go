@@ -24,8 +24,7 @@ type PersonModel struct {
 }
 
 func (pm *PersonModel) AddNew() {
-	u, _ := uuid.NewV4()
-	pm.Set(u, Person{FirstName: "Another", LastName: "Person", Age: 15 + pm.Count()})
+	pm.Add(Person{FirstName: "Another", LastName: "Person", Age: 15 + pm.Count()})
 }
 
 func main() {
@@ -50,10 +49,8 @@ func main() {
 	}
 	pm.Store, _ = qb.NewStore("PersonModel", pm)
 
-	u, _ := uuid.NewV4()
-	pm.Set(u, Person{FirstName: "Robin", LastName: "Burchell", Age: 31})
-	u, _ = uuid.NewV4()
-	pm.Set(u, Person{FirstName: "Kamilla", LastName: "Bremeraunet", Age: 30})
+	pm.Add(Person{FirstName: "Robin", LastName: "Burchell", Age: 31})
+	pm.Add(Person{FirstName: "Kamilla", LastName: "Bremeraunet", Age: 30})
 
 	qb.Run()
 	fmt.Printf("Quitting?\n")

@@ -42,6 +42,12 @@ func (dm *DataModel) Get(u uuid.UUID) (interface{}, bool) {
 	return v, e
 }
 
+func (dm *DataModel) Add(value interface{}) uuid.UUID {
+	u, _ := uuid.NewV4()
+	dm.Set(u, value)
+	return u
+}
+
 func (dm *DataModel) Set(u uuid.UUID, value interface{}) {
 	if dm.SetHook != nil && !dm.SetHook(u, value) {
 		return
