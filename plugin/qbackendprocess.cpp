@@ -60,7 +60,7 @@ void QBackendProcess::componentComplete()
     m_completed = true;
 
     // Start the process
-    m_process.start("go", QStringList() << "run" << "test.go");
+    m_process.start(m_name, m_args);
 
     connect(&m_process, &QProcess::stateChanged, this, [=]() {
         qCWarning(lcProcess) << "State changed " << m_process.state();

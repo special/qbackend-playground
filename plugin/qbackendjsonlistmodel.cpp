@@ -116,7 +116,7 @@ void QBackendJsonListModel::doReset(const QJsonDocument& document)
         QJsonObject row = rowit.value().toObject();
         QUuid uuid = rowit.key().toUtf8();
         doSet(uuid, row);
-        
+
     }
 
     endResetModel();
