@@ -17,7 +17,8 @@ SOURCES += \
     qbackendprocess.cpp \
     qbackendjsonlistmodel.cpp \
     qbackendabstractconnection.cpp \
-    qbackendstore.cpp
+    qbackendstore.cpp \
+    qbackendmodel.cpp
 
 HEADERS += \
     plugin.h \
@@ -25,4 +26,5 @@ HEADERS += \
     qbackendprocess.h \
     qbackendjsonlistmodel.h \
     qbackendabstractconnection.h \
-    qbackendstore.h
+    qbackendstore.h \
+    qbackendmodel.h
