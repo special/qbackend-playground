@@ -20,6 +20,7 @@ public:
 
     void invokeMethod(const QByteArray& identifier, const QString& method, const QByteArray& jsonData) override;
     void subscribe(const QByteArray& identifier, QBackendRemoteObject* object) override;
+    void unsubscribe(const QByteArray& identifier, QBackendRemoteObject* object) override;
 
 signals:
     void urlChanged();
@@ -39,6 +40,6 @@ private:
     QJsonDocument readJsonBlob(int byteCount);
     void write(const QByteArray& data);
 
-    QHash<QByteArray, QBackendRemoteObject*> m_subscribedObjects;
+    QMultiHash<QByteArray, QBackendRemoteObject*> m_subscribedObjects;
 };
 

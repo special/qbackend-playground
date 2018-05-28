@@ -143,10 +143,8 @@ void QBackendConnection::handleModelDataReady()
             QByteArray identifier = QByteArray(parts[1]);
 
             QJsonDocument doc = readJsonBlob(parts[2].toInt());
-            if (m_subscribedObjects.contains(identifier)) {
-                m_subscribedObjects[identifier]->objectFound(doc);
-            } else {
-                qCWarning(lcConnection) << "Got creation for unsubscribed identifier: " << identifier << doc;
+            for (auto obj : m_subscribedObjects.values(identifier)) {
+                obj->objectFound(doc);
             }
         } else if (cmdBuf.startsWith("EMIT ")) {
             // First, remove the newline.
@@ -158,11 +156,9 @@ void QBackendConnection::handleModelDataReady()
 
             QJsonDocument doc = readJsonBlob(parts[3].toInt());
 
-            if (m_subscribedObjects.contains(identifier)) {
-                qCDebug(lcConnection) << "Emit " << parts[2] << " on " << parts[1] << doc.toVariant();
-                m_subscribedObjects[identifier]->methodInvoked(parts[2], doc);
-            } else {
-                qCWarning(lcConnection) << "Got method emit for unsubscribed identifier: " << identifier << doc;
+            qCDebug(lcConnection) << "Emit " << parts[2] << " on " << parts[1] << doc.toVariant();
+            for (auto obj : m_subscribedObjects.values(identifier)) {
+                obj->methodInvoked(parts[2], doc);
             }
         }
     }
@@ -190,13 +186,18 @@ void QBackendConnection::invokeMethod(const QByteArray& identifier, const QStrin
     write(jsonData + '\n');
 }
 
-// ### unsubscribe
 void QBackendConnection::subscribe(const QByteArray& identifier, QBackendRemoteObject* object)
 {
     qCDebug(lcConnection) << "Creating remote object handler " << identifier << " on connection " << this << " for " << object;
-    m_subscribedObjects[identifier] = object;
+    m_subscribedObjects.insert(identifier, object);
     QString data = "SUBSCRIBE " + identifier + "\n";
     write(data.toUtf8());
 }
 
+void QBackendConnection::unsubscribe(const QByteArray& identifier, QBackendRemoteObject* object)
+{
+    qCDebug(lcConnection) << "Removing remote object handler " << identifier << " on connection " << this << " for " << object;
+    m_subscribedObjects.remove(identifier, object);
+    // ### unsubscribe
+}
 
