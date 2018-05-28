@@ -68,8 +68,11 @@ protected:
     QVariant data(const QModelIndex &index, int role) const override;
 
     friend class QBackendModelProxy;
-    void doReset(const QJsonDocument &document);
-    // XXX set and remove
+    void doReset(const QJsonObject &object);
+    void doInsert(int start, const QJsonArray &rows);
+    void doRemove(int start, int end);
+    void doMove(int start, int end, int destination);
+    void doUpdate(int row, const QJsonObject &data);
 
 private:
     static QHash<std::pair<QBackendAbstractConnection*,QString>, std::weak_ptr<QBackendInternalModel>> m_instances;

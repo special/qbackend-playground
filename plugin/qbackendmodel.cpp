@@ -171,50 +171,76 @@ void QBackendInternalModel::setRoleNames(QStringList names)
     }
 }
 
-void QBackendInternalModel::doReset(const QJsonDocument &document)
+static QMap<QByteArray, QVariant> rowDataFromJson(const QJsonObject &row)
+{
+    QMap<QByteArray, QVariant> objectData;
+    for (auto propit = row.constBegin(); propit != row.constEnd(); propit++) {
+        objectData[propit.key().toUtf8()] = propit.value().toVariant();
+    }
+    return objectData;
+}
+
+void QBackendInternalModel::doReset(const QJsonObject &dataObject)
 {
     qCDebug(lcModel) << "Resetting" << m_identifier;
     emit beginResetModel();
     m_data.clear();
 
-    Q_ASSERT(document.isObject());
-    if (!document.isObject()) {
-        qCWarning(lcModel) << "Got a document not an object: " << document;
-        emit endResetModel();
-        return;
-    }
-
-    QJsonObject dataObject = document.object();
-    QJsonObject::const_iterator datait;
-    if ((datait = dataObject.constFind("data")) == dataObject.constEnd()) {
-        qCDebug(lcModel) << "No data object found";
-        emit endResetModel();
-        return; // no rows
-    }
-
-    Q_ASSERT(datait.value().isArray());
-    QJsonArray rows = datait.value().toArray();
-
-    if (rows.size() == 0) {
+    QJsonArray rows = dataObject.value("data").toArray();
+    if (rows.size() == 0)
         qCDebug(lcModel) << "Empty data object";
-        emit endResetModel();
-        return; // no rows
-    }
 
     m_data.reserve(rows.size());
     for (auto rowit = rows.constBegin(); rowit != rows.constEnd(); rowit++) {
         Q_ASSERT(rowit->isObject());
         QJsonObject row = rowit->toObject();
-
-        QMap<QByteArray, QVariant> objectData;
-        for (auto propit = row.constBegin(); propit != row.constEnd(); propit++) {
-            objectData[propit.key().toUtf8()] = propit.value().toVariant();
-        }
-
-        m_data.append(objectData);
+        m_data.append(rowDataFromJson(row));
     }
 
     emit endResetModel();
+}
+
+void QBackendInternalModel::doInsert(int start, const QJsonArray &rows)
+{
+    beginInsertRows(QModelIndex(), start, start + rows.count() - 1);
+    m_data.insert(start, rows.count(), QMap<QByteArray,QVariant>());
+    int i = start;
+    for (const auto &row : rows) {
+        m_data[i] = rowDataFromJson(row.toObject());
+        i++;
+    }
+    endInsertRows();
+}
+
+void QBackendInternalModel::doRemove(int start, int end)
+{
+    beginRemoveRows(QModelIndex(), start, end);
+    m_data.remove(start, end - start + 1);
+    endRemoveRows();
+}
+
+void QBackendInternalModel::doMove(int start, int end, int destination)
+{
+    beginMoveRows(QModelIndex(), start, end, QModelIndex(), destination);
+    QVector<QMap<QByteArray,QVariant>> rows(end - start + 1);
+    std::copy_n(m_data.begin()+start, rows.size(), rows.begin());
+    // XXX These indicies are likely wrong for the "move down" case that
+    // is described in beginMoveRows' documentation.
+    m_data.remove(start, rows.size());
+    m_data.insert(destination, rows.size(), QMap<QByteArray,QVariant>());
+    std::copy_n(rows.begin(), rows.size(), m_data.begin()+destination);
+    endMoveRows();
+
+}
+void QBackendInternalModel::doUpdate(int row, const QJsonObject &data)
+{
+    if (row < 0 || row >= m_data.size()) {
+        qCWarning(lcModel) << "invalid row" << row << "in model update";
+        return;
+    }
+
+    m_data[row] = rowDataFromJson(data);
+    emit dataChanged(index(row), index(row));
 }
 
 QBackendModelProxy::QBackendModelProxy(QBackendInternalModel *model)
@@ -224,11 +250,48 @@ QBackendModelProxy::QBackendModelProxy(QBackendInternalModel *model)
 
 void QBackendModelProxy::objectFound(const QJsonDocument& document)
 {
-    m_model->doReset(document);
+    if (!document.isObject()) {
+        qCWarning(lcModel) << "Invalid data type for backend model object";
+        return;
+    }
+
+    m_model->doReset(document.object());
 }
 
 void QBackendModelProxy::methodInvoked(const QByteArray& method, const QJsonDocument& document)
 {
-    // XXX
-    qFatal("not implemented");
+    if (!document.isObject()) {
+        qCWarning(lcModel) << "Method invoked without valid data";
+        return;
+    }
+    QJsonObject args = document.object();
+
+    if (method == "insert") {
+        // { "start": 0, rows: [ { ... } ] }
+        int start = args.value("start").toInt();
+        QJsonArray rows = args.value("rows").toArray();
+        m_model->doInsert(start, rows);
+    } else if (method == "remove") {
+        // { "start": 0, "end": 0 }
+        int start = args.value("start").toInt();
+        int end = args.value("end").toInt();
+        m_model->doRemove(start, end);
+    } else if (method == "move") {
+        // { "start": 0, "end": 0, "destination": 0 }
+        int start = args.value("start").toInt();
+        int end = args.value("end").toInt();
+        int destination = args.value("destination").toInt();
+        m_model->doMove(start, end, destination);
+    } else if (method == "update") {
+        // { rows: { "0": { ... } } }
+        QJsonObject rowMap = args.value("rows").toObject();
+        for (auto it = rowMap.constBegin(); it != rowMap.constEnd(); it++) {
+            m_model->doUpdate(it.key().toInt(), it.value().toObject());
+        }
+    } else if (method == "reset") {
+        // identical to data object in objectFound
+        m_model->doReset(args);
+    } else {
+        qCWarning(lcModel) << "unknown method" << method << "invoked";
+    }
 }
