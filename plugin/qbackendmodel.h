@@ -10,6 +10,10 @@
 class QBackendInternalModel;
 class QBackendModelProxy;
 
+// TODO: solution for race-free reference to rows
+// TODO: total count from backend, fetchMore
+// TODO: expose some sort/filter from QSFPM
+
 // QBackendModel is the QML-exposed item model type, acting as a sort/filter
 // proxy model around a potentially-shared internal model.
 class QBackendModel : public QSortFilterProxyModel

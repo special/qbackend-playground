@@ -1,80 +1,61 @@
 package qbackend
 
-import (
-	uuid "github.com/satori/go.uuid"
-)
-
-// Model is a common interface for Store types which can be used as data
-// models by the frontend.
-type Model interface {
-	Data() interface{}
-	Count() int
-	Get(uuid uuid.UUID) interface{}
-	Set(uuid uuid.UUID, data interface{})
-	Remove(uuid uuid.UUID)
+type RowGetter interface {
+	Row(row int) interface{}
+	Rows() []interface{}
 }
 
-// DataModel is a generic implementation of Model.
-type DataModel struct {
+type Model struct {
+	Rows  RowGetter
 	Store *Store
-	data  map[uuid.UUID]interface{}
-
-	SetHook    func(uuid uuid.UUID, value interface{}) bool
-	RemoveHook func(uuid uuid.UUID) bool
 }
 
-func (dm *DataModel) Data() interface{} {
+func (m *Model) Data() interface{} {
 	return struct {
 		Data interface{} `json:"data"`
-	}{dm.data}
+	}{m.Rows.Rows()}
 }
 
-func (dm *DataModel) Count() int {
-	return len(dm.data)
+func (m *Model) Reset() {
+	m.Store.Emit("reset", m.Data())
 }
 
-func (dm *DataModel) Get(u uuid.UUID) (interface{}, bool) {
-	if dm.data == nil {
-		return nil, false
+func (m *Model) Inserted(start, count int) {
+	rows := make([]interface{}, count)
+	for i := 0; i < count; i++ {
+		rows[i] = m.Rows.Row(start + i)
 	}
-
-	v, e := dm.data[u]
-	return v, e
+	m.Store.Emit("insert", struct {
+		Start int           `json:"start"`
+		Rows  []interface{} `json:"rows"`
+	}{start, rows})
 }
 
-func (dm *DataModel) Add(value interface{}) uuid.UUID {
-	u, _ := uuid.NewV4()
-	dm.Set(u, value)
-	return u
+func (m *Model) Removed(start, count int) {
+	m.Store.Emit("remove", struct {
+		Start int `json:"start"`
+		End   int `json:"end"`
+	}{start, start + count - 1})
 }
 
-func (dm *DataModel) Set(u uuid.UUID, value interface{}) {
-	if dm.SetHook != nil && !dm.SetHook(u, value) {
-		return
-	}
-
-	if dm.data == nil {
-		dm.data = make(map[uuid.UUID]interface{})
-	}
-
-	dm.data[u] = value
-	dm.Store.Emit("set", struct {
-		UUID uuid.UUID
-		Data interface{} `json:"data"`
-	}{u, value})
+func (m *Model) Moved(start, count, destination int) {
+	m.Store.Emit("move", struct {
+		Start       int `json:"start"`
+		End         int `json:"end"`
+		Destination int `json:"destination"`
+	}{start, start + count - 1, destination})
 }
 
-func (dm *DataModel) Remove(u uuid.UUID) {
-	if dm.RemoveHook != nil && !dm.RemoveHook(u) {
-		return
-	}
+func (m *Model) Updated(row int) {
+	rows := make(map[int]interface{})
+	rows[row] = m.Rows.Row(row)
+	m.Store.Emit("update", struct {
+		Rows map[int]interface{}
+	}{rows})
+}
 
-	if dm.data == nil {
-		return
-	}
-
-	delete(dm.data, u)
-	dm.Store.Emit("remove", struct {
-		UUID uuid.UUID
-	}{u})
+// Attempt to invoke methods on the Rows object first
+func (m *Model) Invoke(method string, args []interface{}) bool {
+	err := m.Store.invokeDataObject(m.Rows, method, args)
+	return err == nil
 }

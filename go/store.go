@@ -66,21 +66,25 @@ func (s *Store) Updated() {
 
 // Invoke calls a method of this store on this backend.
 func (s *Store) Invoke(methodName string, inArgs []interface{}) error {
-	if s.Data == nil {
+	return s.invokeDataObject(s.Data, methodName, inArgs)
+}
+
+func (s *Store) invokeDataObject(object interface{}, methodName string, inArgs []interface{}) error {
+	if object == nil {
 		return errors.New("method invoked on nil object")
 	} else if len(methodName) < 1 {
 		return errors.New("invoked empty method name")
 	}
 
-	// If Data is an InvokableStore, try its Invoke method first
-	if is, ok := s.Data.(InvokableStore); ok {
+	// If object is an InvokableStore, try its Invoke method first
+	if is, ok := object.(InvokableStore); ok {
 		if is.Invoke(methodName, inArgs) {
 			return nil
 		}
 	}
 
-	// Reflect to find a method named methodName on Data
-	dataValue := reflect.ValueOf(s.Data)
+	// Reflect to find a method named methodName on object
+	dataValue := reflect.ValueOf(object)
 	method := dataValue.MethodByName(methodName)
 	if !method.IsValid() {
 		// Try an uppercase first letter
