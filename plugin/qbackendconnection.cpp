@@ -198,6 +198,7 @@ void QBackendConnection::unsubscribe(const QByteArray& identifier, QBackendRemot
 {
     qCDebug(lcConnection) << "Removing remote object handler " << identifier << " on connection " << this << " for " << object;
     m_subscribedObjects.remove(identifier, object);
-    // ### unsubscribe
+    QString data = "UNSUBSCRIBE " + identifier + "\n";
+    write(data.toUtf8());
 }
 

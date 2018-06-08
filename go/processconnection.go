@@ -135,6 +135,17 @@ func (c *ProcessConnection) Process() error {
 				// Ignored; store does not exist
 			}
 
+		case "UNSUBSCRIBE":
+			if len(msg.Args) < 1 {
+				break
+			}
+
+			if store, exists := c.store[msg.Args[0]]; exists {
+				if store.numSubscribed > 0 {
+					store.numSubscribed--
+				}
+			}
+
 		case "INVOKE":
 			if len(msg.Args) < 2 {
 				break
