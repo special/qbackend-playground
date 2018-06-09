@@ -14,9 +14,10 @@ import (
 // ProcessConnection implements the Connection interface to communicate
 // with a frontend parent process over stdin/stdout.
 type ProcessConnection struct {
-	in    io.ReadCloser
-	out   io.WriteCloser
-	store map[string]*Store
+	in         io.ReadCloser
+	out        io.WriteCloser
+	store      map[string]*Store
+	rootObject *Store
 
 	processSignal chan struct{}
 	queue         chan connectionMsg
@@ -56,6 +57,26 @@ func (c *ProcessConnection) handle() {
 	defer close(c.processSignal)
 	defer close(c.queue)
 	fmt.Fprintln(c.out, "VERSION 2")
+
+	// Send ROOT
+	{
+		if c.rootObject == nil {
+			panic("no root object for active connection")
+		}
+		c.rootObject.numSubscribed++
+
+		obj := struct {
+			Identifier string      `json:"identifier"`
+			Data       interface{} `json:"data"`
+		}{"root", c.rootObject.Value()}
+
+		buf, err := json.Marshal(obj)
+		if err != nil {
+			// XXX handle these failures better
+			panic("invalid root object for active connection")
+		}
+		fmt.Fprintf(c.out, "ROOT %d\n%s\n", len(buf), buf)
+	}
 
 	rd := bufio.NewReader(c.in)
 	for {
@@ -179,6 +200,19 @@ func (c *ProcessConnection) Process() error {
 
 func (c *ProcessConnection) ProcessSignal() <-chan struct{} {
 	return c.processSignal
+}
+
+func (c *ProcessConnection) RootObject() *Store {
+	return c.rootObject
+}
+
+func (c *ProcessConnection) SetRootObject(obj interface{}) {
+	if c.rootObject != nil {
+		// XXX this is a little rude, maybe
+		panic("cannot reset root object on connection")
+	}
+
+	c.rootObject, _ = c.NewStore("root", obj)
 }
 
 func (c *ProcessConnection) NewStore(name string, data interface{}) (*Store, error) {

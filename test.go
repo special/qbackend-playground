@@ -28,9 +28,10 @@ func (pm *PersonModel) AddNew() {
 
 func main() {
 	qb := qbackend.NewStdConnection()
+	qb.SetRootObject(&generalData{TestData: "Now connected", TotalPeople: 666})
 
-	gd := &generalData{TestData: "Now connected", TotalPeople: 666}
-	/*gds, _ :=*/ qb.NewStore("GeneralData", gd)
+	//gd := &generalData{TestData: "Now connected", TotalPeople: 666}
+	///*gds, _ :=*/ qb.NewStore("GeneralData", gd)
 
 	/*pm := &PersonModel{}
 	pm.SetHook = func(uuid uuid.UUID, value interface{}) bool {

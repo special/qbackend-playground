@@ -4,7 +4,7 @@
 #include <QQmlParserStatus>
 #include <QProcess>
 
-class QBackendModel;
+class QBackendObject;
 
 // Used to handle requests from the remote peer.
 // Create an instance, and associate it with a given name that will be
@@ -29,6 +29,8 @@ public:
     QBackendAbstractConnection(QObject *parent = 0);
 
 public:
+    virtual QBackendObject *rootObject() const = 0;
+    virtual QBackendObject *object(const QByteArray &identifier) = 0;
     virtual void subscribe(const QByteArray& identifier, QBackendRemoteObject* object) = 0;
     virtual void unsubscribe(const QByteArray& identifier, QBackendRemoteObject* object) = 0;
     virtual void invokeMethod(const QByteArray& identifier, const QString& method, const QByteArray& jsonData) = 0;

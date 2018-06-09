@@ -24,6 +24,9 @@ type Connection interface {
 	// more control over concurrency.
 	ProcessSignal() <-chan struct{}
 
+	RootObject() *Store
+	SetRootObject(object interface{})
+
 	NewStore(name string, data interface{}) (*Store, error)
 	Store(name string) *Store
 

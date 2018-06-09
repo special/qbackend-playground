@@ -6,7 +6,7 @@ Item {
     width: 500
     height: 800
 
-    property var dataObject: backendProcess.object("GeneralData")
+    property var dataObject: backendProcess.root
 
     BackendProcess {
         id: backendProcess
