@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/CrimsonAS/qbackend/go"
-	uuid "github.com/satori/go.uuid"
 )
 
 type Person struct {
@@ -19,21 +18,21 @@ type generalData struct {
 }
 
 // PersonModel wraps a DataModel to add additional invokable methods
-type PersonModel struct {
+/*type PersonModel struct {
 	qbackend.DataModel
 }
 
 func (pm *PersonModel) AddNew() {
 	pm.Add(Person{FirstName: "Another", LastName: "Person", Age: 15 + pm.Count()})
-}
+}*/
 
 func main() {
 	qb := qbackend.NewStdConnection()
 
-	gd := &generalData{TestData: "Now connected", TotalPeople: 0}
-	gds, _ := qb.NewStore("GeneralData", gd)
+	gd := &generalData{TestData: "Now connected", TotalPeople: 666}
+	/*gds, _ :=*/ qb.NewStore("GeneralData", gd)
 
-	pm := &PersonModel{}
+	/*pm := &PersonModel{}
 	pm.SetHook = func(uuid uuid.UUID, value interface{}) bool {
 		_, existed := pm.Get(uuid)
 		if !existed {
@@ -50,7 +49,7 @@ func main() {
 	pm.Store, _ = qb.NewStore("PersonModel", pm)
 
 	pm.Add(Person{FirstName: "Robin", LastName: "Burchell", Age: 31})
-	pm.Add(Person{FirstName: "Kamilla", LastName: "Bremeraunet", Age: 30})
+	pm.Add(Person{FirstName: "Kamilla", LastName: "Bremeraunet", Age: 30})*/
 
 	qb.Run()
 	fmt.Printf("Quitting?\n")

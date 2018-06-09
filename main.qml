@@ -6,11 +6,7 @@ Item {
     width: 500
     height: 800
 
-    BackendObject {
-        id: dataObject
-        connection: backendProcess
-        identifier: "GeneralData"
-    }
+    property var dataObject: backendProcess.object("GeneralData")
 
     BackendProcess {
         id: backendProcess
@@ -18,7 +14,7 @@ Item {
         args: [ "run", "test.go" ]
     }
 
-    ListView {
+    /*ListView {
         id: myView
         width: parent.width
         anchors.top: headerRow.bottom
@@ -95,7 +91,7 @@ Item {
                 }
             }
         }
-    }
+    }*/
 
     Row {
         id: headerRow
@@ -122,7 +118,7 @@ Item {
         }
     }
 
-    Row {
+    /*Row {
         id: bottomRow
         anchors.bottom: parent.bottom
         width: parent.width
@@ -135,5 +131,5 @@ Item {
                 myData.invokeMethod("addNew", [])
             }
         }
-    }
+    }*/
 }
