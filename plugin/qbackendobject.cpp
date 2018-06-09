@@ -9,24 +9,24 @@
 #include <QQmlComponent>
 #include <QQmlEngine>
 
-#include "qbackendstore.h"
+#include "qbackendobject.h"
 #include "qbackendabstractconnection.h"
 
-Q_LOGGING_CATEGORY(lcStore, "backend.store")
+Q_LOGGING_CATEGORY(lcObject, "backend.object")
 
-QBackendStore::QBackendStore(QObject *parent)
+QBackendObject::QBackendObject(QObject *parent)
     : QObject(parent)
 {
 
 }
 
-QByteArray QBackendStore::identifier() const
+QByteArray QBackendObject::identifier() const
 {
     return m_identifier;
 }
 
 // ### error on componentComplete if not set
-void QBackendStore::setIdentifier(const QByteArray& identifier)
+void QBackendObject::setIdentifier(const QByteArray& identifier)
 {
     if (m_identifier == identifier) {
         return;
@@ -36,13 +36,13 @@ void QBackendStore::setIdentifier(const QByteArray& identifier)
     subscribeIfReady();
 }
 
-QBackendAbstractConnection* QBackendStore::connection() const
+QBackendAbstractConnection* QBackendObject::connection() const
 {
     return m_connection;
 }
 
 // ### error on componentComplete if not set
-void QBackendStore::setConnection(QBackendAbstractConnection* connection)
+void QBackendObject::setConnection(QBackendAbstractConnection* connection)
 {
     if (connection == m_connection) {
         return;
@@ -55,42 +55,42 @@ void QBackendStore::setConnection(QBackendAbstractConnection* connection)
     emit connectionChanged();
 }
 
-QObject *QBackendStore::data() const
+QObject *QBackendObject::data() const
 {
     return m_dataObject;
 }
 
-class QBackendStoreProxy : public QBackendRemoteObject
+class QBackendObjectProxy : public QBackendRemoteObject
 {
 public:
-    QBackendStoreProxy(QBackendStore* model);
+    QBackendObjectProxy(QBackendObject* model);
     void objectFound(const QJsonDocument& document) override;
     void methodInvoked(const QByteArray& method, const QJsonDocument& document) override;
 
 private:
-    QBackendStore *m_store = nullptr;
+    QBackendObject *m_object = nullptr;
 };
 
-QBackendStoreProxy::QBackendStoreProxy(QBackendStore* store)
-    : m_store(store)
+QBackendObjectProxy::QBackendObjectProxy(QBackendObject* object)
+    : m_object(object)
 {
 
 }
 
-void QBackendStoreProxy::objectFound(const QJsonDocument& document)
+void QBackendObjectProxy::objectFound(const QJsonDocument& document)
 {
-    m_store->doReset(document);
+    m_object->doReset(document);
 }
 
-void QBackendStore::doReset(const QJsonDocument& document)
+void QBackendObject::doReset(const QJsonDocument& document)
 {
-    qCDebug(lcStore) << "Resetting " << m_identifier << " to " << document;
+    qCDebug(lcObject) << "Resetting " << m_identifier << " to " << document;
     if (m_dataObject) {
         m_dataObject->deleteLater();
     }
 
     if (!document.isObject()) {
-        qCWarning(lcStore) << "Got a change that wasn't an object? " << document;
+        qCWarning(lcObject) << "Got a change that wasn't an object? " << document;
         return;
     }
     QJsonObject object = document.object();
@@ -143,17 +143,17 @@ void QBackendStore::doReset(const QJsonDocument& document)
 
     componentSource += "}\n";
     QQmlComponent myComp(qmlEngine(this));
-    myComp.setData(componentSource.toUtf8(), QUrl("qrc:/qbackendstore/" + m_identifier));
+    myComp.setData(componentSource.toUtf8(), QUrl("qrc:/qbackendobject/" + m_identifier));
     m_dataObject = myComp.create();
     if (m_dataObject == nullptr) {
-        qWarning(lcStore) << "Failed to create runtime object for " << m_identifier << componentSource.toUtf8().data();
-        qWarning(lcStore) << myComp.errorString();
+        qWarning(lcObject) << "Failed to create runtime object for " << m_identifier << componentSource.toUtf8().data();
+        qWarning(lcObject) << myComp.errorString();
     }
     Q_ASSERT(m_dataObject);
     emit dataChanged();
 }
 
-void QBackendStore::invokeMethod(const QByteArray& method, const QJSValue& data)
+void QBackendObject::invokeMethod(const QByteArray& method, const QJSValue& data)
 {
     QJSEngine *engine = qmlEngine(this);
     QJSValue global = engine->globalObject();
@@ -166,13 +166,13 @@ void QBackendStore::invokeMethod(const QByteArray& method, const QJSValue& data)
 #if 0
         QJsonObject obj;
         for (auto it = changedProperties.constBegin(); it != changedProperties.constEnd(); it++) {
-            qCDebug(lcStore) << "Requesting change on value " << it.key() << " on identifier " << m_identifier << " to " << it.value();
+            qCDebug(lcObject) << "Requesting change on value " << it.key() << " on identifier " << m_identifier << " to " << it.value();
             obj.insert(it.key(), QJsonValue::fromVariant(it.value()));
         }
         changedProperties.clear();
 #endif
 
-void QBackendStoreProxy::methodInvoked(const QByteArray& method, const QJsonDocument& document)
+void QBackendObjectProxy::methodInvoked(const QByteArray& method, const QJsonDocument& document)
 {
 #if 0
     QJsonObject object = document.object();
@@ -188,14 +188,14 @@ void QBackendStoreProxy::methodInvoked(const QByteArray& method, const QJsonDocu
 
         if (!currentValue.isNull() && (!previousValue.isValid()
                 || (currentValue.canConvert(previousValue.type()) && previousValue != currentValue))) {
-            qCDebug(lcStore) << "Got change on value " << property.name() << " on identifier " << m_identifier << " to " << currentValue;
+            qCDebug(lcObject) << "Got change on value " << property.name() << " on identifier " << m_identifier << " to " << currentValue;
             property.write(this, currentValue);
         }
     }
 #endif
 }
 
-void QBackendStore::subscribeIfReady()
+void QBackendObject::subscribeIfReady()
 {
     if (!m_connection || m_identifier.isEmpty()) {
         return;
@@ -203,7 +203,7 @@ void QBackendStore::subscribeIfReady()
 
     Q_ASSERT(!m_proxy);
 
-    m_proxy = new QBackendStoreProxy(this);
+    m_proxy = new QBackendObjectProxy(this);
     m_connection->subscribe(m_identifier, m_proxy);
 }
 

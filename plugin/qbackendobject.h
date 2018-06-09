@@ -5,19 +5,19 @@
 #include <QHash>
 #include <QVariant>
 #include <QJSValue>
-
-class QMetaProperty;
-class QBackendStoreProxy;
 #include "qbackendabstractconnection.h"
 
-class QBackendStore : public QObject
+class QMetaProperty;
+class QBackendObjectProxy;
+
+class QBackendObject : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(QByteArray identifier READ identifier WRITE setIdentifier NOTIFY identifierChanged)
     Q_PROPERTY(QBackendAbstractConnection* connection READ connection WRITE setConnection NOTIFY connectionChanged)
     Q_PROPERTY(QObject* data READ data NOTIFY dataChanged)
 public:
-    QBackendStore(QObject *parent = 0);
+    QBackendObject(QObject *parent = 0);
 
     QByteArray identifier() const;
     void setIdentifier(const QByteArray& identifier);
@@ -43,7 +43,7 @@ private:
 
     QByteArray m_identifier;
     QBackendAbstractConnection *m_connection = nullptr;
-    QBackendStoreProxy *m_proxy = nullptr;
+    QBackendObjectProxy *m_proxy = nullptr;
     QHash<const char *, QVariant> changedProperties;
     QObject *m_dataObject = nullptr;
 };

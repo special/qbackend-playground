@@ -6,8 +6,8 @@ Item {
     width: 500
     height: 800
 
-    BackendStore {
-        id: dataStore
+    BackendObject {
+        id: dataObject
         connection: backendProcess
         identifier: "GeneralData"
     }
@@ -109,8 +109,8 @@ Item {
             Label {
                 color: "white"
                 text: {
-                    if (dataStore.data) {
-                        return dataStore.data.testData + " ; people: " + dataStore.data.totalPeople
+                    if (dataObject.data) {
+                        return dataObject.data.testData + " ; people: " + dataObject.data.totalPeople
                     } else {
                         return "Connecting..."
                     }
