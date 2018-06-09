@@ -4,8 +4,11 @@
 #include <QQmlParserStatus>
 #include <QIODevice>
 #include <QUrl>
+#include <QPointer>
 
 #include "qbackendabstractconnection.h"
+
+class QBackendObject;
 
 class QBackendConnection : public QBackendAbstractConnection
 {
@@ -17,6 +20,8 @@ public:
 
     QUrl url() const;
     void setUrl(const QUrl& url);
+
+    Q_INVOKABLE QBackendObject *object(const QByteArray &identifier);
 
     void invokeMethod(const QByteArray& identifier, const QString& method, const QByteArray& jsonData) override;
     void subscribe(const QByteArray& identifier, QBackendRemoteObject* object) override;
@@ -41,5 +46,6 @@ private:
     void write(const QByteArray& data);
 
     QMultiHash<QByteArray, QBackendRemoteObject*> m_subscribedObjects;
+    QHash<QByteArray, QPointer<QBackendObject>> m_objects;
 };
 

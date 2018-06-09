@@ -4,8 +4,10 @@
 #include <QJsonObject>
 #include <QLoggingCategory>
 #include <QLocalSocket>
+#include <QQmlEngine>
 
 #include "qbackendconnection.h"
+#include "qbackendobject.h"
 
 // #define PROTO_DEBUG
 
@@ -202,3 +204,15 @@ void QBackendConnection::unsubscribe(const QByteArray& identifier, QBackendRemot
     write(data.toUtf8());
 }
 
+QBackendObject *QBackendConnection::object(const QByteArray &identifier)
+{
+    QPointer<QBackendObject> object = m_objects.value(identifier);
+    if (!object) {
+        object = new QBackendObject(this, identifier);
+        m_objects.insert(identifier, object);
+        QQmlEngine::setContextForObject(object, qmlContext(this));
+        // This should be the result of the heuristic, but I never trust it.
+        QQmlEngine::setObjectOwnership(object, QQmlEngine::JavaScriptOwnership);
+    }
+    return object;
+}
