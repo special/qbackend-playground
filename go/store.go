@@ -2,6 +2,7 @@ package qbackend
 
 import (
 	"encoding"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -173,4 +174,18 @@ func (s *Store) Emit(method string, data interface{}) error {
 
 func (s *Store) NumSubscribed() int {
 	return s.numSubscribed
+}
+
+// Generate a qbackend object reference
+func (s *Store) MarshalJSON() ([]byte, error) {
+	obj := struct {
+		Tag        string      `json:"_qbackend_"`
+		Identifier string      `json:"identifier"`
+		Data       interface{} `json:"data"`
+	}{
+		"object",
+		s.Name,
+		s.Data,
+	}
+	return json.Marshal(obj)
 }

@@ -118,6 +118,18 @@ Item {
         }
     }
 
+    Label {
+        anchors {
+            left: parent.left
+            right: parent.right
+            top: headerRow.bottom
+        }
+
+        property var person: dataObject.data.mainPerson
+        text: !person ? "unknown" : person.data.lastName + ", " + person.data.firstName + ": " + person.data.age + " years old"
+        color: "black"
+    }
+
     /*Row {
         id: bottomRow
         anchors.bottom: parent.bottom

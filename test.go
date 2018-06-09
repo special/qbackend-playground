@@ -13,8 +13,9 @@ type Person struct {
 }
 
 type generalData struct {
-	TestData    string `json:"testData"`
-	TotalPeople int    `json:"totalPeople"`
+	TestData    string          `json:"testData"`
+	TotalPeople int             `json:"totalPeople"`
+	MainPerson  *qbackend.Store `json:"mainPerson"`
 }
 
 // PersonModel wraps a DataModel to add additional invokable methods
@@ -28,7 +29,11 @@ func (pm *PersonModel) AddNew() {
 
 func main() {
 	qb := qbackend.NewStdConnection()
-	qb.SetRootObject(&generalData{TestData: "Now connected", TotalPeople: 666})
+
+	mainPerson := Person{FirstName: "Robin", LastName: "Burchell", Age: 31}
+	mpStore, _ := qb.NewStore("thatguy", mainPerson)
+
+	qb.SetRootObject(&generalData{TestData: "Now connected", TotalPeople: 666, MainPerson: mpStore})
 
 	//gd := &generalData{TestData: "Now connected", TotalPeople: 666}
 	///*gds, _ :=*/ qb.NewStore("GeneralData", gd)
