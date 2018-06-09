@@ -79,6 +79,11 @@ void QBackendConnection::setUrl(const QUrl& url)
     }
 }
 
+QBackendObject *QBackendConnection::rootObject() const
+{
+    return m_rootObject;
+}
+
 void QBackendConnection::setBackendIo(QIODevice *rd, QIODevice *wr)
 {
     if (m_readIo || m_writeIo) {
@@ -136,6 +141,33 @@ void QBackendConnection::handleModelDataReady()
             QList<QByteArray> parts = cmdBuf.split(' ');
             Q_ASSERT(parts.length() == 2);
             qCInfo(lcConnection) << "Connected to backend version " << parts[1];
+        } else if (cmdBuf.startsWith("ROOT ")) {
+            cmdBuf.truncate(cmdBuf.length() - 1);
+            QList<QByteArray> parts = cmdBuf.split(' ');
+            Q_ASSERT(parts.length() == 2);
+
+            QJsonDocument doc = readJsonBlob(parts[1].toInt());
+            if (!doc.isObject()) {
+                qCWarning(lcConnection) << "Data for ROOT is not an object:" << doc;
+                return;
+            }
+            QJsonObject obj = doc.object();
+
+            // { "type": { XXX }, "identifier": "root", data: { ... } }
+            if (obj.value("identifier").toString() != QStringLiteral("root")) {
+                qCWarning(lcConnection) << "Root object has unexpected identifier:" << obj.value("identifier");
+                return;
+            }
+
+            if (!m_rootObject) {
+                m_rootObject = new QBackendObject(this, "root", this);
+                m_objects.insert("root", m_rootObject);
+                QQmlEngine::setContextForObject(m_rootObject, qmlContext(this));
+                m_rootObject->doReset(obj.value("data").toObject());
+                emit rootObjectChanged();
+            } else {
+                m_rootObject->doReset(obj.value("data").toObject());
+            }
         } else if (cmdBuf.startsWith("OBJECT_CREATE ")) {
             // First, remove the newline.
             cmdBuf.truncate(cmdBuf.length() - 1);

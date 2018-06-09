@@ -63,21 +63,20 @@ QBackendObjectProxy::QBackendObjectProxy(QBackendObject* object)
 
 void QBackendObjectProxy::objectFound(const QJsonDocument& document)
 {
-    m_object->doReset(document);
-}
-
-void QBackendObject::doReset(const QJsonDocument& document)
-{
-    qCDebug(lcObject) << "Resetting " << m_identifier << " to " << document;
-    if (m_dataObject) {
-        m_dataObject->deleteLater();
-    }
-
     if (!document.isObject()) {
         qCWarning(lcObject) << "Got a change that wasn't an object? " << document;
         return;
     }
-    QJsonObject object = document.object();
+    m_object->doReset(document.object());
+}
+
+void QBackendObject::doReset(const QJsonObject& object)
+{
+    qCDebug(lcObject) << "Resetting " << m_identifier << " to " << object;
+    if (m_dataObject) {
+        m_dataObject->deleteLater();
+    }
+
     QString componentSource;
     componentSource  = "import QtQuick 2.0\n";
     componentSource += "QtObject {\n";

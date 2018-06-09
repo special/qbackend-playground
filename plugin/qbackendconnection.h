@@ -14,12 +14,15 @@ class QBackendConnection : public QBackendAbstractConnection
 {
     Q_OBJECT
     Q_PROPERTY(QUrl url READ url WRITE setUrl NOTIFY urlChanged)
+    Q_PROPERTY(QBackendObject* root READ rootObject NOTIFY rootObjectChanged)
 
 public:
     QBackendConnection(QObject *parent = 0);
 
     QUrl url() const;
     void setUrl(const QUrl& url);
+
+    QBackendObject *rootObject() const;
 
     Q_INVOKABLE QBackendObject *object(const QByteArray &identifier);
 
@@ -29,6 +32,7 @@ public:
 
 signals:
     void urlChanged();
+    void rootObjectChanged();
 
 protected:
     void setBackendIo(QIODevice *read, QIODevice *write);
@@ -47,5 +51,6 @@ private:
 
     QMultiHash<QByteArray, QBackendRemoteObject*> m_subscribedObjects;
     QHash<QByteArray, QPointer<QBackendObject>> m_objects;
+    QBackendObject *m_rootObject = nullptr;
 };
 

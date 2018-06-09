@@ -24,7 +24,7 @@ public:
     QObject* data() const;
 
     // ### not public
-    void doReset(const QJsonDocument& document);
+    void doReset(const QJsonObject& object);
 
     Q_INVOKABLE void invokeMethod(const QByteArray& method, const QJSValue& data);
 
