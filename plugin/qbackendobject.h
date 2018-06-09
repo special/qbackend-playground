@@ -13,18 +13,14 @@ class QBackendObjectProxy;
 class QBackendObject : public QObject
 {
     Q_OBJECT
-    Q_PROPERTY(QByteArray identifier READ identifier WRITE setIdentifier NOTIFY identifierChanged)
-    Q_PROPERTY(QBackendAbstractConnection* connection READ connection WRITE setConnection NOTIFY connectionChanged)
+    Q_PROPERTY(QByteArray identifier READ identifier CONSTANT)
+    Q_PROPERTY(QBackendAbstractConnection* connection READ connection CONSTANT)
     Q_PROPERTY(QObject* data READ data NOTIFY dataChanged)
 public:
-    QBackendObject(QObject *parent = 0);
+    QBackendObject(QBackendAbstractConnection* connection, QByteArray identifier, QObject *parent = nullptr);
 
     QByteArray identifier() const;
-    void setIdentifier(const QByteArray& identifier);
-
     QBackendAbstractConnection* connection() const;
-    void setConnection(QBackendAbstractConnection* connection);
-
     QObject* data() const;
 
     // ### not public
@@ -33,13 +29,10 @@ public:
     Q_INVOKABLE void invokeMethod(const QByteArray& method, const QJSValue& data);
 
 signals:
-    void identifierChanged();
-    void connectionChanged();
     void dataChanged();
 
 private:
     QVariant readProperty(const QMetaProperty& property);
-    void subscribeIfReady();
 
     QByteArray m_identifier;
     QBackendAbstractConnection *m_connection = nullptr;

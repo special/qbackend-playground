@@ -12,7 +12,7 @@ void QBackendPlugin::registerTypes(const char *uri)
     qmlRegisterType<QBackendConnection>(uri, 1, 0, "BackendConnection");
     qmlRegisterType<QBackendProcess>(uri, 1, 0, "BackendProcess");
     qmlRegisterType<QBackendJsonListModel>(uri, 1, 0, "BackendJsonListModel");
-    qmlRegisterType<QBackendObject>(uri, 1, 0, "BackendObject");
+    qmlRegisterUncreatableType<QBackendObject>(uri, 1, 0, "BackendObject", QStringLiteral("Objects cannot be created"));
     qmlRegisterType<QBackendModel>(uri, 1, 0, "BackendModel");
 }
 

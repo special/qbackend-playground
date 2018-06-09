@@ -14,52 +14,6 @@
 
 Q_LOGGING_CATEGORY(lcObject, "backend.object")
 
-QBackendObject::QBackendObject(QObject *parent)
-    : QObject(parent)
-{
-
-}
-
-QByteArray QBackendObject::identifier() const
-{
-    return m_identifier;
-}
-
-// ### error on componentComplete if not set
-void QBackendObject::setIdentifier(const QByteArray& identifier)
-{
-    if (m_identifier == identifier) {
-        return;
-    }
-
-    m_identifier = identifier;
-    subscribeIfReady();
-}
-
-QBackendAbstractConnection* QBackendObject::connection() const
-{
-    return m_connection;
-}
-
-// ### error on componentComplete if not set
-void QBackendObject::setConnection(QBackendAbstractConnection* connection)
-{
-    if (connection == m_connection) {
-        return;
-    }
-
-    m_connection = connection;
-    if (!m_identifier.isEmpty()) {
-        subscribeIfReady();
-    }
-    emit connectionChanged();
-}
-
-QObject *QBackendObject::data() const
-{
-    return m_dataObject;
-}
-
 class QBackendObjectProxy : public QBackendRemoteObject
 {
 public:
@@ -70,6 +24,36 @@ public:
 private:
     QBackendObject *m_object = nullptr;
 };
+
+QBackendObject::QBackendObject(QBackendAbstractConnection *connection, QByteArray identifier, QObject *parent)
+    : QObject(parent)
+    , m_identifier(identifier)
+    , m_connection(connection)
+{
+    m_proxy = new QBackendObjectProxy(this);
+    m_connection->subscribe(m_identifier, m_proxy);
+}
+
+// XXX destructor?
+
+/* Identifier is a constant, unique, arbitrary identifier for this object;
+ * it can be thought of as equivalent to a pointer, except that identifiers
+ * are never reused within a connection. An object's identifier is generated
+ * when it is created and cannot change. */
+QByteArray QBackendObject::identifier() const
+{
+    return m_identifier;
+}
+
+QBackendAbstractConnection* QBackendObject::connection() const
+{
+    return m_connection;
+}
+
+QObject *QBackendObject::data() const
+{
+    return m_dataObject;
+}
 
 QBackendObjectProxy::QBackendObjectProxy(QBackendObject* object)
     : m_object(object)
@@ -194,16 +178,3 @@ void QBackendObjectProxy::methodInvoked(const QByteArray& method, const QJsonDoc
     }
 #endif
 }
-
-void QBackendObject::subscribeIfReady()
-{
-    if (!m_connection || m_identifier.isEmpty()) {
-        return;
-    }
-
-    Q_ASSERT(!m_proxy);
-
-    m_proxy = new QBackendObjectProxy(this);
-    m_connection->subscribe(m_identifier, m_proxy);
-}
-
