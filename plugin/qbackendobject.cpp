@@ -70,6 +70,25 @@ void QBackendObjectProxy::objectFound(const QJsonDocument& document)
     m_object->doReset(document.object());
 }
 
+/* Object structure:
+ *
+ * {
+ *   "_qbackend_": "object",
+ *   "identifier": "123",
+ *   // This is a full type definition object for types that have not been previously defined
+ *   "type": "Person",
+ *   "data": {
+ *     "fullName": "Abazza Bipedal",
+ *     "id": 6
+ *   }
+ * }
+ *
+ * These are tagged with _qbackend_ to allow them to be identified as values in data,
+ * even if the type is not strict.
+ *
+ * Unless otherwise noted, "data" is comprehensive and any property not included gets a default value.
+ */
+
 void QBackendObject::doReset(const QJsonObject& object)
 {
     qCDebug(lcObject) << "Resetting " << m_identifier << " to " << object;
@@ -80,6 +99,8 @@ void QBackendObject::doReset(const QJsonObject& object)
     QString componentSource;
     componentSource  = "import QtQuick 2.0\n";
     componentSource += "QtObject {\n";
+    // Assigned during creation below
+    componentSource += "property var qbConnection\n";
 
     for (QJsonObject::const_iterator objit = object.constBegin(); objit != object.constEnd(); objit++) {
         QString type;
@@ -104,6 +125,21 @@ void QBackendObject::doReset(const QJsonObject& object)
         } else if (objit.value().isNull()) {
             type = "var";
             val = ": null";
+        } else if (objit.value().isObject() && objit.value().toObject().value("_qbackend_").toString() == "object") {
+            QJsonObject obj = objit.value().toObject();
+            QString identifier = obj.value("identifier").toString();
+            if (identifier.isEmpty() || identifier == m_identifier) {
+                qCWarning(lcObject) << "Ignoring invalid object identifier in property:" << identifier;
+                continue;
+            }
+
+            // Creates an object if necessary, otherwise reuses and updates data
+            QBackendObject *backendObject = m_connection->object(identifier.toUtf8());
+            backendObject->doReset(obj.value("data").toObject());
+
+            type = "var";
+            // XXX XXX Escape this! JSON escaping would be safe and reasonable, but no obvious way to get it.
+            val = QStringLiteral(": qbConnection.object(\"%1\")").arg(identifier);
         } else if (objit.value().isObject()) {
             type = "var";
             val = ": " + QJsonDocument(objit.value().toObject()).toJson(QJsonDocument::Compact);
@@ -127,12 +163,14 @@ void QBackendObject::doReset(const QJsonObject& object)
     componentSource += "}\n";
     QQmlComponent myComp(qmlEngine(this));
     myComp.setData(componentSource.toUtf8(), QUrl("qrc:/qbackendobject/" + m_identifier));
-    m_dataObject = myComp.create();
+    m_dataObject = myComp.beginCreate(qmlContext(this));
     if (m_dataObject == nullptr) {
         qWarning(lcObject) << "Failed to create runtime object for " << m_identifier << componentSource.toUtf8().data();
         qWarning(lcObject) << myComp.errorString();
+        return;
     }
-    Q_ASSERT(m_dataObject);
+    m_dataObject->setProperty("qbConnection", QVariant::fromValue<QObject*>(m_connection));
+    myComp.completeCreate();
     emit dataChanged();
 }
 
