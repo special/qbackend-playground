@@ -96,110 +96,146 @@ void QBackendConnection::setBackendIo(QIODevice *rd, QIODevice *wr)
 
     if (m_pendingData.length()) {
         for (const QByteArray& data : m_pendingData) {
-            write(data);
+            m_writeIo->write(data);
         }
         m_pendingData.clear();
     }
 
-    connect(m_readIo, &QIODevice::readyRead, this, &QBackendConnection::handleModelDataReady);
-    handleModelDataReady();
+    connect(m_readIo, &QIODevice::readyRead, this, &QBackendConnection::handleDataReady);
+    handleDataReady();
 }
 
-QJsonDocument QBackendConnection::readJsonBlob(int byteCount)
-{
-    QByteArray cmdBuf;
-    while (cmdBuf.length() < byteCount) {
-        qCDebug(lcProtoExtreme) << "Want " << byteCount << " bytes, have " << cmdBuf.length();
-        m_readIo->waitForReadyRead(10);
-        cmdBuf += m_readIo->read(byteCount - cmdBuf.length());
-    }
-    Q_ASSERT(cmdBuf.length() == byteCount);
-    QJsonParseError pe;
-    QJsonDocument doc = QJsonDocument::fromJson(cmdBuf, &pe);
-    if (doc.isNull()) {
-        qCWarning(lcProto) << "Bad blob: " << cmdBuf << pe.errorString();
-    }
-    return doc;
-}
+/* I gift to you a brief, possibly accurate protocol description.
+ *
+ * == Protocol framing ==
+ * All messages begin with an ASCII-encoded integer greater than 0, followed by a space.
+ * This is followed by a message blob of exactly that size, then by a newline (which is not
+ * included in the blob size). That is:
+ *
+ *   "<int:size> <blob(size):message>\n"
+ *
+ * The message blob can contain newlines, so don't try to parse based on those.
+ *
+ * == Messages ==
+ * Messages themselves are JSON objects. The only mandatory field is "command", all others
+ * are command specific.
+ *
+ *   { "command": "VERSION", ... }
+ *
+ * == Commands ==
+ * RTFS. Backend is expected to send VERSION and ROOT immediately, in that order.
+ */
 
-void QBackendConnection::handleModelDataReady()
+void QBackendConnection::handleDataReady()
 {
-    while (m_readIo->canReadLine()) {
-        qCDebug(lcProtoExtreme) << "Reading...";
-        QByteArray cmdBuf = m_readIo->readLine();
-        if (cmdBuf == "\n") {
-            // ignore
-            continue;
+    for (;;) {
+        // Peek to see the (ASCII) integer size.
+        // 11 bytes is enough for 2^32 and a space, which is way too much.
+        QByteArray peek(11, 0);
+        int peekSz = m_readIo->peek(peek.data(), peek.size());
+        if (peekSz < 0 || (peekSz == 0 && !m_readIo->isOpen())) {
+            qCWarning(lcConnection) << "Read error:" << m_readIo->errorString();
+            return;
+        }
+        peek.resize(peekSz);
+
+        int headSz = peek.indexOf(' ');
+        if (headSz < 1) {
+            if (headSz == 0 || peek.size() == 11) {
+                // Everything has gone wrong
+                qCWarning(lcConnection) << "Invalid data on connection:" << peek;
+                // XXX All of these close/failure cases are basically unhandled.
+                m_readIo->close();
+            }
+            // Otherwise, there's just not a full size yet
+            return;
         }
 
+        bool szOk = false;
+        int blobSz = peek.mid(0, headSz).toInt(&szOk);
+        if (!szOk || blobSz < 1) {
+            // Also everything has gone wrong
+            qCWarning(lcConnection) << "Invalid data on connection:" << peek;
+            m_readIo->close();
+            return;
+        }
+        // Include space in headSz now
+        headSz++;
+
+        // Wait for headSz + blobSz + 1 (the newline) bytes
+        if (m_readIo->bytesAvailable() < headSz + blobSz + 1) {
+            return;
+        }
+
+        // Skip past headSz, then read blob and trim newline
+        m_readIo->skip(headSz);
+        QByteArray message(blobSz + 1, 0);
+        if (m_readIo->read(message.data(), message.size()) < message.size()) {
+            // This should not happen, unless bytesAvailable lied
+            qCWarning(lcConnection) << "Read failed:" << m_readIo->errorString();
+            return;
+        }
+        message.chop(1);
+
+        handleMessage(message);
+    }
+}
+
+void QBackendConnection::handleMessage(const QByteArray &message) {
 #if defined(PROTO_DEBUG)
-        qCDebug(lcProto) << "Read " << cmdBuf;
+    qCDebug(lcProto) << "Read " << message;
 #endif
-        if (cmdBuf.startsWith("VERSION ")) {
-            // First, remove the newline.
-            cmdBuf.truncate(cmdBuf.length() - 1);
-            QList<QByteArray> parts = cmdBuf.split(' ');
-            Q_ASSERT(parts.length() == 2);
-            qCInfo(lcConnection) << "Connected to backend version " << parts[1];
-        } else if (cmdBuf.startsWith("ROOT ")) {
-            cmdBuf.truncate(cmdBuf.length() - 1);
-            QList<QByteArray> parts = cmdBuf.split(' ');
-            Q_ASSERT(parts.length() == 2);
 
-            QJsonDocument doc = readJsonBlob(parts[1].toInt());
-            if (!doc.isObject()) {
-                qCWarning(lcConnection) << "Data for ROOT is not an object:" << doc;
-                return;
-            }
-            QJsonObject obj = doc.object();
+    QJsonParseError pe;
+    QJsonDocument json = QJsonDocument::fromJson(message, &pe);
+    if (!json.isObject()) {
+        qCWarning(lcProto) << "bad message:" << message << pe.errorString();
+        return;
+    }
+    QJsonObject cmd = json.object();
+    QString command = cmd.value("command").toString();
 
-            // { "type": { XXX }, "identifier": "root", data: { ... } }
-            if (obj.value("identifier").toString() != QStringLiteral("root")) {
-                qCWarning(lcConnection) << "Root object has unexpected identifier:" << obj.value("identifier");
-                return;
-            }
+    if (command == "VERSION") {
+        qCInfo(lcConnection) << "Connected to backend version " << cmd.value("version");
+    } else if (command == "ROOT") {
+        // The cmd object itself is a backend object structure
+        if (cmd.value("identifier").toString() != QStringLiteral("root")) {
+            qCWarning(lcConnection) << "Root object has unexpected identifier:" << cmd.value("identifier");
+            return;
+        }
 
-            if (!m_rootObject) {
-                m_rootObject = new QBackendObject(this, "root", this);
-                m_objects.insert("root", m_rootObject);
-                QQmlEngine::setContextForObject(m_rootObject, qmlContext(this));
-                m_rootObject->doReset(obj.value("data").toObject());
-                emit rootObjectChanged();
-            } else {
-                m_rootObject->doReset(obj.value("data").toObject());
-            }
-        } else if (cmdBuf.startsWith("OBJECT_CREATE ")) {
-            // First, remove the newline.
-            cmdBuf.truncate(cmdBuf.length() - 1);
+        if (!m_rootObject) {
+            m_rootObject = new QBackendObject(this, "root", this);
+            m_objects.insert("root", m_rootObject);
+            QQmlEngine::setContextForObject(m_rootObject, qmlContext(this));
+            m_rootObject->doReset(cmd.value("data").toObject());
+            emit rootObjectChanged();
+        } else {
+            m_rootObject->doReset(cmd.value("data").toObject());
+        }
+    } else if (command == "OBJECT_CREATE") {
+        QByteArray identifier = cmd.value("identifier").toString().toUtf8();
 
-            QList<QByteArray> parts = cmdBuf.split(' ');
-            Q_ASSERT(parts.length() == 2);
-            QByteArray identifier = QByteArray(parts[1]);
+        for (auto obj : m_subscribedObjects.values(identifier)) {
+            obj->objectFound(cmd.value("data").toObject());
+        }
+    } else if (command == "EMIT") {
+        QByteArray identifier = cmd.value("identifier").toString().toUtf8();
+        QString method = cmd.value("method").toString();
+        QJsonValue params = cmd.value("parameters");
 
-            QJsonDocument doc = readJsonBlob(parts[2].toInt());
-            for (auto obj : m_subscribedObjects.values(identifier)) {
-                obj->objectFound(doc);
-            }
-        } else if (cmdBuf.startsWith("EMIT ")) {
-            // First, remove the newline.
-            cmdBuf.truncate(cmdBuf.length() - 1);
-
-            QList<QByteArray> parts = cmdBuf.split(' ');
-            Q_ASSERT(parts.length() == 3);
-            QByteArray identifier = QByteArray(parts[1]);
-
-            QJsonDocument doc = readJsonBlob(parts[3].toInt());
-
-            qCDebug(lcConnection) << "Emit " << parts[2] << " on " << parts[1] << doc.toVariant();
-            for (auto obj : m_subscribedObjects.values(identifier)) {
-                obj->methodInvoked(parts[2], doc);
-            }
+        qCDebug(lcConnection) << "Emit " << method << " on " << identifier << params;
+        for (auto obj : m_subscribedObjects.values(identifier)) {
+            obj->methodInvoked(method, params);
         }
     }
 }
 
-void QBackendConnection::write(const QByteArray& data)
+void QBackendConnection::write(const QJsonObject &message)
 {
+    QByteArray data = QJsonDocument(message).toJson(QJsonDocument::Compact);
+    data = QByteArray::number(data.size()) + " " + data + "\n";
+
     if (!m_writeIo) {
         qCDebug(lcProtoExtreme) << "Write on an inactive connection buffered: " << data;
         m_pendingData.append(data);
@@ -215,25 +251,30 @@ void QBackendConnection::write(const QByteArray& data)
 void QBackendConnection::invokeMethod(const QByteArray& identifier, const QString& method, const QByteArray& jsonData)
 {
     qCDebug(lcConnection) << "Invoking " << identifier << method << jsonData;
-    QString data = "INVOKE " + identifier + " " + method + " " + QString::number(jsonData.length()) + "\n";
-    write(data.toUtf8());
-    write(jsonData + '\n');
+
+    // It seems silly to encode and then decode this JSON just to reencode it, but that first encoding
+    // is done by JSON.stringify, which handles QJSValue correctly. This is the easiest way to work with it.
+    QJsonDocument params = QJsonDocument::fromJson(jsonData);
+
+    write(QJsonObject{
+          {"command", "INVOKE"},
+          {"identifier", QString::fromUtf8(identifier)},
+          {"parameters", params.array()}
+    });
 }
 
 void QBackendConnection::subscribe(const QByteArray& identifier, QBackendRemoteObject* object)
 {
     qCDebug(lcConnection) << "Creating remote object handler " << identifier << " on connection " << this << " for " << object;
     m_subscribedObjects.insert(identifier, object);
-    QString data = "SUBSCRIBE " + identifier + "\n";
-    write(data.toUtf8());
+    write(QJsonObject{{"command", "SUBSCRIBE"}, {"identifier", QString::fromUtf8(identifier)}});
 }
 
 void QBackendConnection::unsubscribe(const QByteArray& identifier, QBackendRemoteObject* object)
 {
     qCDebug(lcConnection) << "Removing remote object handler " << identifier << " on connection " << this << " for " << object;
     m_subscribedObjects.remove(identifier, object);
-    QString data = "UNSUBSCRIBE " + identifier + "\n";
-    write(data.toUtf8());
+    write(QJsonObject{{"command", "UNSUBSCRIBE"}, {"identifier", QString::fromUtf8(identifier)}});
 }
 
 QBackendObject *QBackendConnection::object(const QByteArray &identifier)

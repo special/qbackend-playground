@@ -18,8 +18,8 @@ class QBackendObjectProxy : public QBackendRemoteObject
 {
 public:
     QBackendObjectProxy(QBackendObject* model);
-    void objectFound(const QJsonDocument& document) override;
-    void methodInvoked(const QByteArray& method, const QJsonDocument& document) override;
+    void objectFound(const QJsonObject& object) override;
+    void methodInvoked(const QString& method, const QJsonValue& params) override;
 
 private:
     QBackendObject *m_object = nullptr;
@@ -61,14 +61,32 @@ QBackendObjectProxy::QBackendObjectProxy(QBackendObject* object)
 
 }
 
-void QBackendObjectProxy::objectFound(const QJsonDocument& document)
+void QBackendObjectProxy::objectFound(const QJsonObject& object)
 {
-    if (!document.isObject()) {
-        qCWarning(lcObject) << "Got a change that wasn't an object? " << document;
-        return;
-    }
-    m_object->doReset(document.object());
+    m_object->doReset(object);
 }
+
+/* Type definitions:
+ *
+ * {
+ *   "name": "Person",
+ *   "properties": {
+ *     "fullName": "string",
+ *     "id": { "type": "int", "readonly": true }
+ *   },
+ *   "methods": {
+ *     "greet": [ "string", "bool" ]
+ *   },
+ *   "signals": {
+ *     "died": [ "string", "int" ]
+ *   }
+ * }
+ *
+ * valid type strings are: string, int, double, bool, var, object
+ * object is a qbackend object; it will contain the object structure.
+ * var can hold any JSON type, including JSON objects.
+ * var can also hold qbackend objects, which are recognized by a special property.
+ */
 
 /* Object structure:
  *
@@ -193,7 +211,7 @@ void QBackendObject::invokeMethod(const QByteArray& method, const QJSValue& data
         changedProperties.clear();
 #endif
 
-void QBackendObjectProxy::methodInvoked(const QByteArray& method, const QJsonDocument& document)
+void QBackendObjectProxy::methodInvoked(const QString& method, const QJsonValue& params)
 {
 #if 0
     QJsonObject object = document.object();

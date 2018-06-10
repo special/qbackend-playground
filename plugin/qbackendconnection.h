@@ -38,7 +38,7 @@ protected:
     void setBackendIo(QIODevice *read, QIODevice *write);
 
 private slots:
-    void handleModelDataReady();
+    void handleDataReady();
 
 private:
     QUrl m_url;
@@ -46,8 +46,8 @@ private:
     QIODevice *m_writeIo = nullptr;
     QList<QByteArray> m_pendingData;
 
-    QJsonDocument readJsonBlob(int byteCount);
-    void write(const QByteArray& data);
+    void handleMessage(const QByteArray &message);
+    void write(const QJsonObject &message);
 
     QMultiHash<QByteArray, QBackendRemoteObject*> m_subscribedObjects;
     QHash<QByteArray, QPointer<QBackendObject>> m_objects;

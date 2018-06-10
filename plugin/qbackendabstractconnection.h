@@ -13,10 +13,10 @@ class QBackendRemoteObject : public QObject
 {
 public:
     // Called when an object has been associated with the subscribed identifier
-    virtual void objectFound(const QJsonDocument& document) = 0;
+    virtual void objectFound(const QJsonObject& object) = 0;
 
     // Called when a method is invoked on this object
-    virtual void methodInvoked(const QByteArray& method, const QJsonDocument& document) = 0;
+    virtual void methodInvoked(const QString& method, const QJsonValue& params) = 0;
 };
 
 // A backend connection is the class that talks to a remote peer and does things

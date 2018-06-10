@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"strconv"
-	"strings"
 )
 
 // ProcessConnection implements the Connection interface to communicate
@@ -20,7 +19,7 @@ type ProcessConnection struct {
 	rootObject *Store
 
 	processSignal chan struct{}
-	queue         chan connectionMsg
+	queue         chan []byte
 }
 
 func NewProcessConnection(in io.ReadCloser, out io.WriteCloser) *ProcessConnection {
@@ -29,7 +28,7 @@ func NewProcessConnection(in io.ReadCloser, out io.WriteCloser) *ProcessConnecti
 		out:           out,
 		store:         make(map[string]*Store),
 		processSignal: make(chan struct{}, 2),
-		queue:         make(chan connectionMsg, 128),
+		queue:         make(chan []byte, 128),
 	}
 	go c.handle()
 	return c
@@ -47,61 +46,49 @@ func NewStdConnection() *ProcessConnection {
 	return NewProcessConnection(in, out)
 }
 
-type connectionMsg struct {
-	Command string
-	Args    []string
-	Blob    []byte
+type cmdMessage struct {
+	Command string `json:"command"`
+}
+
+func (c *ProcessConnection) sendMessage(msg interface{}) {
+	buf, err := json.Marshal(msg)
+	if err != nil {
+		panic("invalid message sent on connection")
+	}
+	fmt.Fprintf(c.out, "%d %s\n", len(buf), buf)
 }
 
 func (c *ProcessConnection) handle() {
 	defer close(c.processSignal)
 	defer close(c.queue)
-	fmt.Fprintln(c.out, "VERSION 2")
+
+	c.sendMessage(struct {
+		cmdMessage
+		Version int `json:"version"`
+	}{cmdMessage{"VERSION"}, 2})
 
 	// Send ROOT
-	{
-		if c.rootObject == nil {
-			panic("no root object for active connection")
-		}
-		c.rootObject.numSubscribed++
-
-		obj := struct {
-			Identifier string      `json:"identifier"`
-			Data       interface{} `json:"data"`
-		}{"root", c.rootObject.Value()}
-
-		buf, err := json.Marshal(obj)
-		if err != nil {
-			// XXX handle these failures better
-			panic("invalid root object for active connection")
-		}
-		fmt.Fprintf(c.out, "ROOT %d\n%s\n", len(buf), buf)
+	if c.rootObject == nil {
+		panic("no root object for active connection")
 	}
+	c.rootObject.numSubscribed++
+
+	c.sendMessage(struct {
+		cmdMessage
+		Identifier string      `json:"identifier"`
+		Data       interface{} `json:"data"`
+	}{cmdMessage{"ROOT"}, "root", c.rootObject.Value()})
 
 	rd := bufio.NewReader(c.in)
 	for {
-		line, _ := rd.ReadString('\n')
-		if len(line) < 1 {
+		sizeStr, _ := rd.ReadString(' ')
+		if len(sizeStr) < 2 {
 			break
 		}
-		line = line[:len(line)-1]
 
-		cmd := strings.Split(line, " ")
-		if len(line) == 0 || len(cmd) < 1 {
-			// Malformed line?
-			continue
-		}
-
-		// Size of the trailing blob, if any
-		byteCnt := int64(0)
-		switch cmd[0] {
-		case "INVOKE":
-			if len(cmd) < 4 {
-				// Malformed INVOKE
-				continue
-			}
-			// Read blob
-			byteCnt, _ = strconv.ParseInt(cmd[3], 10, 32)
+		byteCnt, _ := strconv.ParseInt(sizeStr[:len(sizeStr)-1], 10, 32)
+		if byteCnt < 1 {
+			break
 		}
 
 		blob := make([]byte, byteCnt)
@@ -113,8 +100,13 @@ func (c *ProcessConnection) handle() {
 			}
 		}
 
+		// Read the final newline
+		if nl, _ := rd.ReadByte(); nl != '\n' {
+			break
+		}
+
 		// Queue and signal
-		c.queue <- connectionMsg{Command: cmd[0], Args: cmd[1:], Blob: blob}
+		c.queue <- blob
 		c.processSignal <- struct{}{}
 	}
 }
@@ -133,21 +125,22 @@ func (c *ProcessConnection) Run() error {
 }
 
 func (c *ProcessConnection) Process() error {
-	var msg connectionMsg
 	for {
+		var data []byte
 		select {
-		case msg = <-c.queue:
+		case data = <-c.queue:
 		default:
 			return nil
 		}
 
-		switch msg.Command {
-		case "SUBSCRIBE":
-			if len(msg.Args) < 1 {
-				break
-			}
+		var msg map[string]interface{}
+		if err := json.Unmarshal(data, &msg); err != nil {
+			return err
+		}
 
-			if store, exists := c.store[msg.Args[0]]; exists {
+		switch msg["command"] {
+		case "SUBSCRIBE":
+			if store, exists := c.store[msg["identifier"].(string)]; exists {
 				store.numSubscribed++
 				if store.numSubscribed < 2 {
 					c.storeUpdated(store)
@@ -157,35 +150,26 @@ func (c *ProcessConnection) Process() error {
 			}
 
 		case "UNSUBSCRIBE":
-			if len(msg.Args) < 1 {
-				break
-			}
-
-			if store, exists := c.store[msg.Args[0]]; exists {
+			if store, exists := c.store[msg["identifier"].(string)]; exists {
 				if store.numSubscribed > 0 {
 					store.numSubscribed--
 				}
 			}
 
 		case "INVOKE":
-			if len(msg.Args) < 2 {
-				break
-			}
-
-			store, exists := c.store[msg.Args[0]]
+			store, exists := c.store[msg["identifier"].(string)]
 			if !exists {
 				// Ignored; store does not exist
 				continue
 			}
 
-			// Unmarshal arguments array
-			var args []interface{}
-			if err := json.Unmarshal(msg.Blob, &args); err != nil {
-				// Arguments are not an array
+			params, ok := msg["parameters"].([]interface{})
+			if !ok {
+				// Parameters are not an array
 				continue
 			}
 
-			if err := store.Invoke(msg.Args[1], args); err != nil {
+			if err := store.Invoke(msg["method"].(string), params); err != nil {
 				// Invoke failed
 				continue
 			}
@@ -234,19 +218,20 @@ func (c *ProcessConnection) Store(name string) *Store {
 }
 
 func (c *ProcessConnection) storeUpdated(store *Store) error {
-	buf, err := json.Marshal(store.Value())
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(c.out, "OBJECT_CREATE %s %d\n%s\n", store.Name, len(buf), buf)
+	c.sendMessage(struct {
+		cmdMessage
+		Identifier string      `json:"identifier"`
+		Data       interface{} `json:"data"`
+	}{cmdMessage{"OBJECT_CREATE"}, store.Name, store.Value()})
 	return nil
 }
 
 func (c *ProcessConnection) storeEmit(store *Store, method string, data interface{}) error {
-	buf, err := json.Marshal(data)
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(c.out, "EMIT %s %s %d\n%s\n", store.Name, method, len(buf), buf)
+	c.sendMessage(struct {
+		cmdMessage
+		Identifier string      `json:"identifier"`
+		Method     string      `json:"method"`
+		Parameters interface{} `json:"parameters"`
+	}{cmdMessage{"EMIT"}, store.Name, method, data})
 	return nil
 }

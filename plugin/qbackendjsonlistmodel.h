@@ -50,7 +50,7 @@ private:
     void subscribeIfReady();
 
     friend class QBackendJsonListModelProxy;
-    void doReset(const QJsonDocument& document);
+    void doReset(const QJsonObject& document);
     void doSet(const QUuid& uuid, const QJsonObject& object, bool shouldEmit = false);
     void doRemove(const QUuid& uuid);
 };

@@ -63,8 +63,8 @@ class QBackendJsonListModelProxy : public QBackendRemoteObject
 {
 public:
     QBackendJsonListModelProxy(QBackendJsonListModel* model);
-    void objectFound(const QJsonDocument& document) override;
-    void methodInvoked(const QByteArray& method, const QJsonDocument& document) override;
+    void objectFound(const QJsonObject& object) override;
+    void methodInvoked(const QString& method, const QJsonValue& params) override;
 
 private:
     QBackendJsonListModel *m_model = nullptr;
@@ -75,26 +75,18 @@ QBackendJsonListModelProxy::QBackendJsonListModelProxy(QBackendJsonListModel* mo
 {
 }
 
-void QBackendJsonListModelProxy::objectFound(const QJsonDocument& document)
+void QBackendJsonListModelProxy::objectFound(const QJsonObject& object)
 {
-    m_model->doReset(document);
+    m_model->doReset(object);
 }
 
-void QBackendJsonListModel::doReset(const QJsonDocument& document)
+void QBackendJsonListModel::doReset(const QJsonObject& dataObject)
 {
     qCDebug(lcListModel) << "Resetting" << m_identifier;
     beginResetModel();
     m_idMap.clear();
     m_data.clear();
 
-    Q_ASSERT(document.isObject());
-    if (!document.isObject()) {
-        qCWarning(lcListModel) << "Got a document not an object: " << document;
-        endResetModel();
-        return;
-    }
-
-    QJsonObject dataObject = document.object();
     QJsonObject::const_iterator datait;
     if ((datait = dataObject.constFind("data")) == dataObject.constEnd()) {
         qCDebug(lcListModel) << "No data object found";
@@ -172,17 +164,17 @@ void QBackendJsonListModel::doRemove(const QUuid& uuid)
     endRemoveRows();
 }
 
-void QBackendJsonListModelProxy::methodInvoked(const QByteArray& method, const QJsonDocument& document)
+void QBackendJsonListModelProxy::methodInvoked(const QString& method, const QJsonValue &params)
 {
     if (method == "set") {
         // ### handle arrays, not just objects
-        if (!document.isObject()) {
+        if (!params.isObject()) {
             // uh.. ok
-            qCWarning(lcListModel) << "set without a valid object" << document;
+            qCWarning(lcListModel) << "set without a valid object" << params;
             return;
         }
 
-        QJsonObject object = document.object();
+        QJsonObject object = params.toObject();
         QUuid uuid = object.value("UUID").toString().toUtf8();
         QJsonObject data = object.value("data").toObject();
 
@@ -192,13 +184,13 @@ void QBackendJsonListModelProxy::methodInvoked(const QByteArray& method, const Q
     } else if (method == "remove") {
         qCWarning(lcListModel) << "remove";
         // ### handle arrays, not just objects
-        if (!document.isObject()) {
+        if (!params.isObject()) {
             // uh.. ok
-            qCWarning(lcListModel) << "set without a valid object" << document;
+            qCWarning(lcListModel) << "set without a valid object" << params;
             return;
         }
 
-        QJsonObject object = document.object();
+        QJsonObject object = params.toObject();
         QUuid uuid = object.value("UUID").toString().toUtf8();
         m_model->doRemove(uuid);
     }

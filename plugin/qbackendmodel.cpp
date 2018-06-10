@@ -14,8 +14,8 @@ class QBackendModelProxy : public QBackendRemoteObject
 public:
     QBackendModelProxy(QBackendInternalModel *model);
 
-    void objectFound(const QJsonDocument& document) override;
-    void methodInvoked(const QByteArray& method, const QJsonDocument& document) override;
+    void objectFound(const QJsonObject& object) override;
+    void methodInvoked(const QString& method, const QJsonValue& params) override;
 
 private:
     QBackendInternalModel *m_model;
@@ -248,23 +248,14 @@ QBackendModelProxy::QBackendModelProxy(QBackendInternalModel *model)
 {
 }
 
-void QBackendModelProxy::objectFound(const QJsonDocument& document)
+void QBackendModelProxy::objectFound(const QJsonObject& object)
 {
-    if (!document.isObject()) {
-        qCWarning(lcModel) << "Invalid data type for backend model object";
-        return;
-    }
-
-    m_model->doReset(document.object());
+    m_model->doReset(object);
 }
 
-void QBackendModelProxy::methodInvoked(const QByteArray& method, const QJsonDocument& document)
+void QBackendModelProxy::methodInvoked(const QString& method, const QJsonValue& params)
 {
-    if (!document.isObject()) {
-        qCWarning(lcModel) << "Method invoked without valid data";
-        return;
-    }
-    QJsonObject args = document.object();
+    QJsonObject args = params.toObject();
 
     if (method == "insert") {
         // { "start": 0, rows: [ { ... } ] }
