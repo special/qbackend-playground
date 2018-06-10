@@ -195,6 +195,21 @@ void QBackendConnection::handleMessage(const QByteArray &message) {
     QJsonObject cmd = json.object();
     QString command = cmd.value("command").toString();
 
+    // If there is a syncCallback, call it to see if this is the message it wants.
+    // If so, handle it normally, save it in m_syncResult, and return. If not,
+    // queue it to handle later.
+    //
+    // If there is a syncResult, always queue the message.
+    if ((m_syncCallback && !m_syncCallback(cmd)) || !m_syncResult.isEmpty()) {
+        qCDebug(lcConnection) << "Queuing handling of unrelated message during waitForMessage";
+        QMetaObject::invokeMethod(this, [=]() { handleMessage(message); }, Qt::QueuedConnection);
+        return;
+    }
+    if (m_syncCallback) {
+        m_syncCallback = nullptr;
+        m_syncResult = cmd;
+    }
+
     if (command == "VERSION") {
         qCInfo(lcConnection) << "Connected to backend version " << cmd.value("version");
     } else if (command == "ROOT") {
@@ -246,6 +261,25 @@ void QBackendConnection::write(const QJsonObject &message)
     qCDebug(lcProto) << "Writing " << data;
 #endif
     m_writeIo->write(data);
+}
+
+// waitForMessage blocks and reads messages from the connection, passing each to the callback
+// function until it returns true. The selected message is returned.
+//
+// Any other messages (returning false from the callback) will be queued to handle normally
+// later. They will not have been handled when this function returns; the selected message is
+// taken out of order.
+QJsonObject QBackendConnection::waitForMessage(std::function<bool(const QJsonObject&)> callback)
+{
+    Q_ASSERT(!m_syncCallback);
+    Q_ASSERT(m_syncResult.isEmpty());
+    m_syncCallback = callback;
+    while (m_syncResult.isEmpty()) {
+        m_readIo->waitForReadyRead(5000);
+    }
+    QJsonObject re = m_syncResult;
+    m_syncResult = QJsonObject();
+    return re;
 }
 
 void QBackendConnection::invokeMethod(const QByteArray& identifier, const QString& method, const QByteArray& jsonData)

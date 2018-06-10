@@ -5,6 +5,8 @@
 #include <QIODevice>
 #include <QUrl>
 #include <QPointer>
+#include <QJsonObject>
+#include <functional>
 
 #include "qbackendabstractconnection.h"
 
@@ -48,6 +50,10 @@ private:
 
     void handleMessage(const QByteArray &message);
     void write(const QJsonObject &message);
+
+    QJsonObject waitForMessage(std::function<bool(const QJsonObject&)> callback);
+    std::function<bool(const QJsonObject&)> m_syncCallback;
+    QJsonObject m_syncResult;
 
     QMultiHash<QByteArray, QBackendRemoteObject*> m_subscribedObjects;
     QHash<QByteArray, QPointer<QBackendObject>> m_objects;
