@@ -17,7 +17,7 @@ class QBackendObject : public QObject
     Q_PROPERTY(QBackendAbstractConnection* connection READ connection CONSTANT)
     Q_PROPERTY(QObject* data READ data NOTIFY dataChanged)
 public:
-    QBackendObject(QBackendAbstractConnection* connection, QByteArray identifier, QObject *parent = nullptr);
+    QBackendObject(QBackendAbstractConnection *connection, QByteArray identifier, const QJsonObject &type, QObject *parent = nullptr);
 
     QByteArray identifier() const;
     QBackendAbstractConnection* connection() const;
@@ -28,6 +28,8 @@ public:
 
     Q_INVOKABLE void invokeMethod(const QByteArray& method, const QJSValue& data);
 
+    //virtual const QMetaObject *metaObject() const override;
+
 signals:
     void dataChanged();
 
@@ -37,7 +39,7 @@ private:
     QByteArray m_identifier;
     QBackendAbstractConnection *m_connection = nullptr;
     QBackendObjectProxy *m_proxy = nullptr;
-    QHash<const char *, QVariant> changedProperties;
+    QMetaObject *m_metaObject = nullptr;
     QObject *m_dataObject = nullptr;
 };
 

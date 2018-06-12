@@ -8,6 +8,7 @@
 #include <QLoggingCategory>
 #include <QQmlComponent>
 #include <QQmlEngine>
+#include <QtCore/private/qmetaobjectbuilder_p.h>
 
 #include "qbackendobject.h"
 #include "qbackendabstractconnection.h"
@@ -25,10 +26,13 @@ private:
     QBackendObject *m_object = nullptr;
 };
 
-QBackendObject::QBackendObject(QBackendAbstractConnection *connection, QByteArray identifier, QObject *parent)
+QMetaObject *metaObjectFromType(const QJsonObject &type);
+
+QBackendObject::QBackendObject(QBackendAbstractConnection *connection, QByteArray identifier, const QJsonObject &type, QObject *parent)
     : QObject(parent)
     , m_identifier(identifier)
     , m_connection(connection)
+    , m_metaObject(metaObjectFromType(type))
 {
     m_proxy = new QBackendObjectProxy(this);
     m_connection->subscribe(m_identifier, m_proxy);
@@ -54,6 +58,12 @@ QObject *QBackendObject::data() const
 {
     return m_dataObject;
 }
+
+/*const QMetaObject *QBackendObject::metaObject() const
+{
+    Q_ASSERT(m_metaObject);
+    return m_metaObject;
+}*/
 
 QBackendObjectProxy::QBackendObjectProxy(QBackendObject* object)
     : m_object(object)
@@ -87,6 +97,56 @@ void QBackendObjectProxy::objectFound(const QJsonObject& object)
  * var can hold any JSON type, including JSON objects.
  * var can also hold qbackend objects, which are recognized by a special property.
  */
+// XXX error handling
+QMetaObject *metaObjectFromType(const QJsonObject &type)
+{
+    QMetaObjectBuilder b;
+    b.setClassName(type.value("name").toString().toUtf8());
+
+    qCDebug(lcObject) << "Building metaobject for type:" << type;
+
+    QJsonObject properties = type.value("properties").toObject();
+    for (auto it = properties.constBegin(); it != properties.constEnd(); it++) {
+        // XXX readonly: true syntax, notifiers, other things
+        qCDebug(lcObject) << " -- property:" << it.key() << it.value().toString();
+        b.addProperty(it.key().toUtf8(), it.value().toString().toUtf8());
+    }
+
+    QJsonObject methods = type.value("methods").toObject();
+    for (auto it = methods.constBegin(); it != methods.constEnd(); it++) {
+        // XXX lots of things also
+        QString signature = it.key() + "(";
+        QJsonArray paramTypes = it.value().toArray();
+        for (const QJsonValue &type : paramTypes) {
+            signature += type.toString() + ",";
+        }
+        if (signature.endsWith(",")) {
+            signature.chop(1);
+        }
+        signature += ")";
+        qCDebug(lcObject) << " -- method:" << it.key() << signature;
+        b.addMethod(it.key().toUtf8(), signature.toUtf8());
+    }
+
+    QJsonObject signalsObj = type.value("signals").toObject();
+    for (auto it = signalsObj.constBegin(); it != signalsObj.constEnd(); it++) {
+        // XXX this is just a copy of the code for methods
+        // XXX lots of things also
+        QString signature = it.key() + "(";
+        QJsonArray paramTypes = it.value().toArray();
+        for (const QJsonValue &type : paramTypes) {
+            signature += type.toString() + ",";
+        }
+        if (signature.endsWith(",")) {
+            signature.chop(1);
+        }
+        signature += ")";
+        qCDebug(lcObject) << " -- signal:" << signature;
+        b.addSignal(signature.toUtf8());
+    }
+
+    return b.toMetaObject();
+}
 
 /* Object structure:
  *
@@ -152,7 +212,7 @@ void QBackendObject::doReset(const QJsonObject& object)
             }
 
             // Creates an object if necessary, otherwise reuses and updates data
-            QBackendObject *backendObject = m_connection->object(identifier.toUtf8());
+            QBackendObject *backendObject = m_connection->createObject(identifier.toUtf8(), obj.value("type").toObject());
             backendObject->doReset(obj.value("data").toObject());
 
             type = "var";

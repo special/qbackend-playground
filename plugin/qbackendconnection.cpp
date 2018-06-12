@@ -220,12 +220,13 @@ void QBackendConnection::handleMessage(const QByteArray &message) {
         }
 
         if (!m_rootObject) {
-            m_rootObject = new QBackendObject(this, "root", this);
+            m_rootObject = new QBackendObject(this, "root", cmd.value("type").toObject(), this);
             m_objects.insert("root", m_rootObject);
             QQmlEngine::setContextForObject(m_rootObject, qmlContext(this));
             m_rootObject->doReset(cmd.value("data").toObject());
             emit rootObjectChanged();
         } else {
+            // XXX assert that type has not changed
             m_rootObject->doReset(cmd.value("data").toObject());
         }
     } else if (command == "OBJECT_CREATE") {
@@ -311,15 +312,23 @@ void QBackendConnection::unsubscribe(const QByteArray& identifier, QBackendRemot
     write(QJsonObject{{"command", "UNSUBSCRIBE"}, {"identifier", QString::fromUtf8(identifier)}});
 }
 
-QBackendObject *QBackendConnection::object(const QByteArray &identifier)
+QBackendObject *QBackendConnection::object(const QByteArray &identifier) const
+{
+    return m_objects.value(identifier);
+}
+
+QBackendObject *QBackendConnection::createObject(const QByteArray &identifier, const QJsonObject &type)
 {
     QPointer<QBackendObject> object = m_objects.value(identifier);
-    if (!object) {
-        object = new QBackendObject(this, identifier);
-        m_objects.insert(identifier, object);
-        QQmlEngine::setContextForObject(object, qmlContext(this));
-        // This should be the result of the heuristic, but I never trust it.
-        QQmlEngine::setObjectOwnership(object, QQmlEngine::JavaScriptOwnership);
+    if (object) {
+        // XXX assert that type is the same; it is never allowed to change
+        return object;
     }
+
+    object = new QBackendObject(this, identifier, type);
+    m_objects.insert(identifier, object);
+    QQmlEngine::setContextForObject(object, qmlContext(this));
+    // This should be the result of the heuristic, but I never trust it.
+    QQmlEngine::setObjectOwnership(object, QQmlEngine::JavaScriptOwnership);
     return object;
 }

@@ -1,6 +1,6 @@
 TEMPLATE = lib
 CONFIG += plugin
-QT += qml quick
+QT += qml quick core-private
 TARGET = qbackend
 
 IMPORT_PATH = qbackend

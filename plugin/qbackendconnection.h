@@ -26,7 +26,8 @@ public:
 
     QBackendObject *rootObject() const;
 
-    Q_INVOKABLE QBackendObject *object(const QByteArray &identifier);
+    Q_INVOKABLE QBackendObject *object(const QByteArray &identifier) const;
+    QBackendObject *createObject(const QByteArray &identifier, const QJsonObject &type);
 
     void invokeMethod(const QByteArray& identifier, const QString& method, const QByteArray& jsonData) override;
     void subscribe(const QByteArray& identifier, QBackendRemoteObject* object) override;
