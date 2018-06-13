@@ -75,9 +75,15 @@ func (c *ProcessConnection) handle() {
 
 	c.sendMessage(struct {
 		cmdMessage
-		Identifier string      `json:"identifier"`
-		Data       interface{} `json:"data"`
-	}{cmdMessage{"ROOT"}, "root", c.rootObject.Value()})
+		Identifier string          `json:"identifier"`
+		Type       typeDescription `json:"type"`
+		Data       interface{}     `json:"data"`
+	}{
+		cmdMessage{"ROOT"},
+		"root",
+		c.rootObject.Type(),
+		c.rootObject.Value(),
+	})
 
 	rd := bufio.NewReader(c.in)
 	for {

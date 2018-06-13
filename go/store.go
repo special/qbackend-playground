@@ -1,6 +1,7 @@
 package qbackend
 
 import (
+	"bytes"
 	"encoding"
 	"encoding/json"
 	"errors"
@@ -63,6 +64,143 @@ func (s *Store) Updated() {
 	}
 
 	s.Connection.storeUpdated(s)
+}
+
+type typeDescription struct {
+	Name       string              `json:"name"`
+	Properties map[string]string   `json:"properties"`
+	Methods    map[string][]string `json:"methods"`
+	Signals    map[string][]string `json:"signals"`
+}
+
+func convertTypeName(name string) string {
+	return string(append(bytes.ToLower([]byte{name[0]}), name[1:]...))
+}
+
+// Type returns the JSON type description for Data
+func (s *Store) Type() typeDescription {
+	// XXX
+	// So we need to break Data down into properties, methods, and signals.
+	// Properties are the JSON encoded fields, so those are all public member variables.
+	// Specifically the ones not ignored by JSON.
+	// Technically we're more interested in what JSON type they marshal to.. kinda..
+	// this gets complicated.
+	//
+	// Methods would be anything INVOKE can reach. That code is below, it's easy to figure.
+	//
+	// Signals don't really have an obvious representation. One interesting idea is that
+	// signals are func() variables: the Store gives them an instance that sends the signal
+	// itself... that sounds pretty neat.
+
+	var objectValue reflect.Value
+	if fs, ok := s.Data.(DataFuncStore); ok {
+		objectValue = reflect.ValueOf(fs.Data())
+	} else {
+		objectValue = reflect.ValueOf(s.Data)
+	}
+	objectValue = reflect.Indirect(objectValue)
+	objectType := objectValue.Type()
+
+	typeDesc := typeDescription{
+		// XXX Names could potentially conflict, which will break on client side. Need to
+		// make these safe.
+		Name:       objectType.Name(),
+		Properties: make(map[string]string),
+		Methods:    make(map[string][]string),
+		Signals:    make(map[string][]string),
+	}
+
+	// XXX Name can be empty for anonymous structs
+	// We probably need a map of type -> name to do assignments, deconflicting and
+	// generating them as needed...
+
+	// Properties are read from fields of the object, more or less in the same way as
+	// JSON marshal.
+	numFields := objectType.NumField()
+	for i := 0; i < numFields; i++ {
+		field := objectType.Field(i)
+		if field.PkgPath != "" {
+			// Unexported field
+			continue
+		}
+		if field.Tag.Get("json") == "-" {
+			// Ignored by JSON
+			continue
+		}
+
+		// Property name, using JSON tag if specified
+		name := convertTypeName(field.Name)
+		if tag := field.Tag.Get("json"); len(tag) > 0 {
+			tags := strings.Split(tag, ",")
+			if len(tags) > 0 && len(tags[0]) > 0 {
+				name = tags[0]
+			}
+		}
+
+		// Determine if this field will be string, int, double, bool, var, or object
+		// These rules do not exactly match how json will handle things, which could
+		// lead to future problems.
+		// TODO: Should this be unwrapping interfaces first?
+		var qbType string
+		switch field.Type.Kind() {
+		case reflect.Bool:
+			qbType = "bool"
+
+		case reflect.Int:
+			fallthrough
+		case reflect.Int8:
+			fallthrough
+		case reflect.Int16:
+			fallthrough
+		case reflect.Int32:
+			fallthrough
+		case reflect.Int64:
+			fallthrough
+		case reflect.Uint:
+			fallthrough
+		case reflect.Uint8:
+			fallthrough
+		case reflect.Uint16:
+			fallthrough
+		case reflect.Uint32:
+			fallthrough
+		case reflect.Uint64:
+			qbType = "int"
+
+		case reflect.Float32:
+			fallthrough
+		case reflect.Float64:
+			qbType = "double"
+
+		case reflect.String:
+			// TODO also []byte?
+			qbType = "string"
+
+		default:
+			var referenced *Store
+			if field.Type == reflect.TypeOf(referenced) {
+				referenced, _ = objectValue.Field(i).Interface().(*Store)
+				// XXX Need identifier, type; send in _qbackend_:object structure
+				// type name is enough, don't need full type info. it can be sent when
+				// the structure is actually needed; if we sent it here, it'd end up
+				// recursively sending loads of type infos.
+				//
+				// Might make sense to send type info for members along with values;
+				// in that case, it is fairly likely they will be wanted.
+				qbType = "object"
+			} else {
+				qbType = "var"
+			}
+		}
+
+		typeDesc.Properties[name] = qbType
+	}
+
+	// XXX methods
+
+	// XXX signals
+
+	return typeDesc
 }
 
 // Invoke calls a method of this store on this backend.
@@ -179,12 +317,14 @@ func (s *Store) NumSubscribed() int {
 // Generate a qbackend object reference
 func (s *Store) MarshalJSON() ([]byte, error) {
 	obj := struct {
-		Tag        string      `json:"_qbackend_"`
-		Identifier string      `json:"identifier"`
-		Data       interface{} `json:"data"`
+		Tag        string          `json:"_qbackend_"`
+		Identifier string          `json:"identifier"`
+		Type       typeDescription `json:"type"`
+		Data       interface{}     `json:"data"`
 	}{
 		"object",
 		s.Name,
+		s.Type(),
 		s.Data,
 	}
 	return json.Marshal(obj)
