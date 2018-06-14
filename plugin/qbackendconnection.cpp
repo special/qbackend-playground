@@ -317,18 +317,37 @@ QBackendObject *QBackendConnection::object(const QByteArray &identifier) const
     return m_objects.value(identifier);
 }
 
-QBackendObject *QBackendConnection::createObject(const QByteArray &identifier, const QJsonObject &type)
+// Create or return the backend object described by `object`, which is in the
+// "_qbackend_": "object" format described in qbackendobject.cpp.
+QBackendObject *QBackendConnection::ensureObject(const QJsonObject &data)
 {
+    QByteArray identifier = data.value("identifier").toString().toUtf8();
+    if (identifier.isEmpty())
+        return nullptr;
+
     QPointer<QBackendObject> object = m_objects.value(identifier);
-    if (object) {
+    if (!object) {
+        object = new QBackendObject(this, identifier, data.value("type").toObject());
+        m_objects.insert(identifier, object);
+        QQmlEngine::setContextForObject(object, qmlContext(this));
+        // This should be the result of the heuristic, but I never trust it.
+        QQmlEngine::setObjectOwnership(object, QQmlEngine::JavaScriptOwnership);
+    } else {
         // XXX assert that type is the same; it is never allowed to change
-        return object;
     }
 
-    object = new QBackendObject(this, identifier, type);
-    m_objects.insert(identifier, object);
-    QQmlEngine::setContextForObject(object, qmlContext(this));
-    // This should be the result of the heuristic, but I never trust it.
-    QQmlEngine::setObjectOwnership(object, QQmlEngine::JavaScriptOwnership);
+    // XXX this is a problem: it's being reset for every property read because the
+    // parent object has data in it. Even if that were fixed, it's broken because
+    // it could race and end up replacing the data with older data.
+    //
+    // One option is to just forbid data, and have it always request separately
+    // and as-needed. That's a little unfortunate, because sometimes you know
+    // that the data in a child object is going to be relevant pretty quick.
+    // Although if that would translate into API is much less clear.
+    //
+    // XXX Ignoring it for now..
+    //if (!data.value("data").isUndefined())
+        //object->doReset(data.value("data").toObject());
+
     return object;
 }

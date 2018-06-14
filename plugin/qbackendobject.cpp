@@ -96,11 +96,7 @@ int QBackendObject::qt_metacall(QMetaObject::Call c, int id, void **argv)
                 break;
             default:
                 if (property.userType() == QMetaType::type("QBackendObject*")) {
-                    // XXX So somewhere between doReset and right here, we need a QBackendObject* that has
-                    // the type info at least. The type info arrives in doReset.
-                    //
-                    // Data is a different story -- we'll need the blocking data query for that to work.
-                    *reinterpret_cast<QBackendObject**>(argv[0]) = nullptr;
+                    *reinterpret_cast<QBackendObject**>(argv[0]) = m_connection->ensureObject(value.toObject());
                 } else {
                     // XXX May be possible to do some QVariant conversion here?
                     qCWarning(lcObject) << "Unknown type" << property.typeName() << "in property read of" << property.name();
