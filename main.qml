@@ -105,8 +105,8 @@ Item {
             Label {
                 color: "white"
                 text: {
-                    if (dataObject.data) {
-                        return dataObject.data.testData + " ; people: " + dataObject.data.totalPeople
+                    if (dataObject) {
+                        return dataObject.testData + " ; people: " + dataObject.totalPeople
                     } else {
                         return "Connecting..."
                     }
@@ -125,8 +125,9 @@ Item {
             top: headerRow.bottom
         }
 
-        property var person: dataObject.data.mainPerson
-        text: !person ? "unknown" : person.data.lastName + ", " + person.data.firstName + ": " + person.data.age + " years old"
+        property var person: trigger, dataObject.mainPerson
+        onPersonChanged: console.log("person:", JSON.stringify(dataObject))
+        text: !person ? "unknown" : person.lastName + ", " + person.firstName + ": " + person.age + " years old"
         color: "black"
     }
 

@@ -27,6 +27,7 @@ private:
 };
 
 QMetaObject *metaObjectFromType(const QJsonObject &type);
+std::pair<QString,QString> qtTypesFromType(const QString &type);
 
 QBackendObject::QBackendObject(QBackendAbstractConnection *connection, QByteArray identifier, const QJsonObject &type, QObject *parent)
     : QObject(parent)
@@ -38,7 +39,11 @@ QBackendObject::QBackendObject(QBackendAbstractConnection *connection, QByteArra
     m_connection->subscribe(m_identifier, m_proxy);
 }
 
-// XXX destructor?
+QBackendObject::~QBackendObject()
+{
+    // XXX clean up proxy, subscription, etc
+    free(m_metaObject);
+}
 
 /* Identifier is a constant, unique, arbitrary identifier for this object;
  * it can be thought of as equivalent to a pointer, except that identifiers
@@ -54,16 +59,61 @@ QBackendAbstractConnection* QBackendObject::connection() const
     return m_connection;
 }
 
-QObject *QBackendObject::data() const
-{
-    return m_dataObject;
-}
-
-/*const QMetaObject *QBackendObject::metaObject() const
+const QMetaObject *QBackendObject::metaObject() const
 {
     Q_ASSERT(m_metaObject);
     return m_metaObject;
-}*/
+}
+
+int QBackendObject::qt_metacall(QMetaObject::Call c, int id, void **argv)
+{
+    id = QObject::qt_metacall(c, id, argv);
+    if (id < 0)
+        return id;
+
+    if (c == QMetaObject::ReadProperty) {
+        int count = m_metaObject->propertyCount() - m_metaObject->propertyOffset();
+        QMetaProperty property = m_metaObject->property(id + m_metaObject->propertyOffset());
+
+        if (property.isValid()) {
+            QJsonValue value = m_dataObject.value(property.name());
+
+            switch (static_cast<QMetaType::Type>(property.type())) {
+            case QMetaType::Bool:
+                *reinterpret_cast<bool*>(argv[0]) = value.toBool();
+                break;
+            case QMetaType::Double:
+                *reinterpret_cast<double*>(argv[0]) = value.toDouble();
+                break;
+            case QMetaType::Int:
+                *reinterpret_cast<int*>(argv[0]) = value.toInt();
+                break;
+            case QMetaType::QString:
+                *reinterpret_cast<QString*>(argv[0]) = value.toString();
+                break;
+            case QMetaType::QVariant:
+                *reinterpret_cast<QVariant*>(argv[0]) = value.toVariant();
+                break;
+            default:
+                if (property.userType() == QMetaType::type("QBackendObject*")) {
+                    // XXX So somewhere between doReset and right here, we need a QBackendObject* that has
+                    // the type info at least. The type info arrives in doReset.
+                    //
+                    // Data is a different story -- we'll need the blocking data query for that to work.
+                    *reinterpret_cast<QBackendObject**>(argv[0]) = nullptr;
+                } else {
+                    // XXX May be possible to do some QVariant conversion here?
+                    qCWarning(lcObject) << "Unknown type" << property.typeName() << "in property read of" << property.name();
+                }
+                break;
+            }
+        }
+
+        id -= count;
+    }
+
+    return id;
+}
 
 QBackendObjectProxy::QBackendObjectProxy(QBackendObject* object)
     : m_object(object)
@@ -109,7 +159,7 @@ QMetaObject *metaObjectFromType(const QJsonObject &type)
     for (auto it = properties.constBegin(); it != properties.constEnd(); it++) {
         // XXX readonly: true syntax, notifiers, other things
         qCDebug(lcObject) << " -- property:" << it.key() << it.value().toString();
-        b.addProperty(it.key().toUtf8(), it.value().toString().toUtf8());
+        b.addProperty(it.key().toUtf8(), qtTypesFromType(it.value().toString()).first.toUtf8());
     }
 
     QJsonObject methods = type.value("methods").toObject();
@@ -118,7 +168,7 @@ QMetaObject *metaObjectFromType(const QJsonObject &type)
         QString signature = it.key() + "(";
         QJsonArray paramTypes = it.value().toArray();
         for (const QJsonValue &type : paramTypes) {
-            signature += type.toString() + ",";
+            signature += qtTypesFromType(type.toString()).first + ",";
         }
         if (signature.endsWith(",")) {
             signature.chop(1);
@@ -135,7 +185,7 @@ QMetaObject *metaObjectFromType(const QJsonObject &type)
         QString signature = it.key() + "(";
         QJsonArray paramTypes = it.value().toArray();
         for (const QJsonValue &type : paramTypes) {
-            signature += type.toString() + ",";
+            signature += qtTypesFromType(type.toString()).first + ",";
         }
         if (signature.endsWith(",")) {
             signature.chop(1);
@@ -146,6 +196,25 @@ QMetaObject *metaObjectFromType(const QJsonObject &type)
     }
 
     return b.toMetaObject();
+}
+
+// Qt, QML
+std::pair<QString,QString> qtTypesFromType(const QString &type)
+{
+    if (type == "string")
+        return {"QString","string"};
+    else if (type == "int")
+        return {"int","int"};
+    else if (type == "double")
+        return {"double","double"};
+    else if (type == "bool")
+        return {"bool","bool"};
+    else if (type == "var")
+        return {"QVariant","var"};
+    else if (type == "object")
+        return {"QBackendObject*","BackendObject"};
+    else
+        return {"QVariant","var"};
 }
 
 /* Object structure:
@@ -170,10 +239,10 @@ QMetaObject *metaObjectFromType(const QJsonObject &type)
 void QBackendObject::doReset(const QJsonObject& object)
 {
     qCDebug(lcObject) << "Resetting " << m_identifier << " to " << object;
-    if (m_dataObject) {
-        m_dataObject->deleteLater();
-    }
+    m_dataObject = object;
 
+    // XXX
+#if 0
     QString componentSource;
     componentSource  = "import QtQuick 2.0\n";
     componentSource += "QtObject {\n";
@@ -249,7 +318,9 @@ void QBackendObject::doReset(const QJsonObject& object)
     }
     m_dataObject->setProperty("qbConnection", QVariant::fromValue<QObject*>(m_connection));
     myComp.completeCreate();
-    emit dataChanged();
+#endif
+
+    // XXX signal changes to properties
 }
 
 void QBackendObject::invokeMethod(const QByteArray& method, const QJSValue& data)
