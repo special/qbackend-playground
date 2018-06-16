@@ -33,6 +33,7 @@ public:
     virtual QBackendObject *object(const QByteArray &identifier) const = 0;
     virtual QBackendObject *ensureObject(const QJsonObject &object) = 0;
     virtual void subscribe(const QByteArray& identifier, QBackendRemoteObject* object) = 0;
+    virtual void subscribeSync(const QByteArray& identifier, QBackendRemoteObject* object) = 0;
     virtual void unsubscribe(const QByteArray& identifier, QBackendRemoteObject* object) = 0;
     virtual void invokeMethod(const QByteArray& identifier, const QString& method, const QByteArray& jsonData) = 0;
 };

@@ -35,6 +35,7 @@ private:
     QBackendObjectProxy *m_proxy = nullptr;
     QMetaObject *m_metaObject = nullptr;
     QJsonObject m_dataObject;
+    bool m_dataReady = false;
 };
 
 Q_DECLARE_METATYPE(QBackendObject*)

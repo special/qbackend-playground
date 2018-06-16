@@ -272,11 +272,19 @@ void QBackendConnection::write(const QJsonObject &message)
 // taken out of order.
 QJsonObject QBackendConnection::waitForMessage(std::function<bool(const QJsonObject&)> callback)
 {
+    // Flush write buffer before blocking
+    while (m_writeIo->bytesToWrite() > 0) {
+        if (!m_writeIo->waitForBytesWritten(5000))
+            break;
+    }
+
     Q_ASSERT(!m_syncCallback);
     Q_ASSERT(m_syncResult.isEmpty());
     m_syncCallback = callback;
     while (m_syncResult.isEmpty()) {
-        m_readIo->waitForReadyRead(5000);
+        if (!m_readIo->waitForReadyRead(5000))
+            break;
+        handleDataReady(); // XXX but why?
     }
     QJsonObject re = m_syncResult;
     m_syncResult = QJsonObject();
@@ -303,6 +311,16 @@ void QBackendConnection::subscribe(const QByteArray& identifier, QBackendRemoteO
     qCDebug(lcConnection) << "Creating remote object handler " << identifier << " on connection " << this << " for " << object;
     m_subscribedObjects.insert(identifier, object);
     write(QJsonObject{{"command", "SUBSCRIBE"}, {"identifier", QString::fromUtf8(identifier)}});
+}
+
+void QBackendConnection::subscribeSync(const QByteArray& identifier, QBackendRemoteObject* object)
+{
+    subscribe(identifier, object);
+    waitForMessage([identifier](const QJsonObject &message) -> bool {
+        if (message.value("command").toString() != "OBJECT_CREATE")
+            return false;
+        return message.value("identifier").toString().toUtf8() == identifier;
+    });
 }
 
 void QBackendConnection::unsubscribe(const QByteArray& identifier, QBackendRemoteObject* object)

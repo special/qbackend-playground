@@ -36,7 +36,6 @@ QBackendObject::QBackendObject(QBackendAbstractConnection *connection, QByteArra
     , m_metaObject(metaObjectFromType(type))
 {
     m_proxy = new QBackendObjectProxy(this);
-    m_connection->subscribe(m_identifier, m_proxy);
 }
 
 QBackendObject::~QBackendObject()
@@ -72,6 +71,13 @@ int QBackendObject::qt_metacall(QMetaObject::Call c, int id, void **argv)
         return id;
 
     if (c == QMetaObject::ReadProperty) {
+        if (!m_dataReady) {
+            // XXX This ends up in doReset and sends notify signals, which sounds a little
+            // dangerous.. I could imagine it creating fake binding loops. They could be deferred
+            // I guess?
+            m_connection->subscribeSync(m_identifier, m_proxy);
+        }
+
         int count = m_metaObject->propertyCount() - m_metaObject->propertyOffset();
         QMetaProperty property = m_metaObject->property(id + m_metaObject->propertyOffset());
 
@@ -237,6 +243,7 @@ void QBackendObject::doReset(const QJsonObject& object)
 {
     qCDebug(lcObject) << "Resetting " << m_identifier << " to " << object;
     m_dataObject = object;
+    m_dataReady = true;
 
     // XXX Do something smarter than signaling for every property
     // XXX This is also wrong: any properties in the old m_dataObject that

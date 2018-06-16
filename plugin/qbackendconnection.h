@@ -31,6 +31,7 @@ public:
 
     void invokeMethod(const QByteArray& identifier, const QString& method, const QByteArray& jsonData) override;
     void subscribe(const QByteArray& identifier, QBackendRemoteObject* object) override;
+    void subscribeSync(const QByteArray& identifier, QBackendRemoteObject* object) override;
     void unsubscribe(const QByteArray& identifier, QBackendRemoteObject* object) override;
 
 signals:
