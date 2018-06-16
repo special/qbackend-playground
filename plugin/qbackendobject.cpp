@@ -155,7 +155,8 @@ QMetaObject *metaObjectFromType(const QJsonObject &type)
     for (auto it = properties.constBegin(); it != properties.constEnd(); it++) {
         // XXX readonly: true syntax, notifiers, other things
         qCDebug(lcObject) << " -- property:" << it.key() << it.value().toString();
-        b.addProperty(it.key().toUtf8(), qtTypesFromType(it.value().toString()).first.toUtf8());
+        int notifier = b.addSignal(it.key().toUtf8() + "Changed()").index();
+        b.addProperty(it.key().toUtf8(), qtTypesFromType(it.value().toString()).first.toUtf8(), notifier);
     }
 
     QJsonObject methods = type.value("methods").toObject();
@@ -237,86 +238,18 @@ void QBackendObject::doReset(const QJsonObject& object)
     qCDebug(lcObject) << "Resetting " << m_identifier << " to " << object;
     m_dataObject = object;
 
-    // XXX
-#if 0
-    QString componentSource;
-    componentSource  = "import QtQuick 2.0\n";
-    componentSource += "QtObject {\n";
-    // Assigned during creation below
-    componentSource += "property var qbConnection\n";
-
-    for (QJsonObject::const_iterator objit = object.constBegin(); objit != object.constEnd(); objit++) {
-        QString type;
-        QString name = objit.key();
-        QString val;
-        if (objit.value().isArray()) {
-            type = "var";
-            val = ": " + QJsonDocument(objit.value().toArray()).toJson(QJsonDocument::Compact);
-            if (val == ": ") {
-                val = ": []";
-            }
-        } else if (objit.value().isBool()) {
-            type = "bool";
-            if (objit.value().toBool()) {
-                val = ": true";
-            } else {
-                val = ": false";
-            }
-        } else if (objit.value().isDouble()) {
-            type = "double";
-            val = ": " + QString::number(objit.value().toDouble());
-        } else if (objit.value().isNull()) {
-            type = "var";
-            val = ": null";
-        } else if (objit.value().isObject() && objit.value().toObject().value("_qbackend_").toString() == "object") {
-            QJsonObject obj = objit.value().toObject();
-            QString identifier = obj.value("identifier").toString();
-            if (identifier.isEmpty() || identifier == m_identifier) {
-                qCWarning(lcObject) << "Ignoring invalid object identifier in property:" << identifier;
-                continue;
-            }
-
-            // Creates an object if necessary, otherwise reuses and updates data
-            QBackendObject *backendObject = m_connection->createObject(identifier.toUtf8(), obj.value("type").toObject());
-            backendObject->doReset(obj.value("data").toObject());
-
-            type = "var";
-            // XXX XXX Escape this! JSON escaping would be safe and reasonable, but no obvious way to get it.
-            val = QStringLiteral(": qbConnection.object(\"%1\")").arg(identifier);
-        } else if (objit.value().isObject()) {
-            type = "var";
-            val = ": " + QJsonDocument(objit.value().toObject()).toJson(QJsonDocument::Compact);
-            if (val == ": ") {
-                val = ": {}";
-            }
-        } else if (objit.value().isString()) {
-            type = "string";
-            val = ": \"" + objit.value().toString() + "\"";
-        } else if (objit.value().isUndefined()) {
-            type = "var";
-            val = ": undefined";
-        } else {
-            Q_ASSERT("unknown type");
+    // XXX Do something smarter than signaling for every property
+    // XXX This is also wrong: any properties in the old m_dataObject that
+    // aren't in object have also changed.
+    for (auto it = m_dataObject.constBegin(); it != m_dataObject.constEnd(); it++) {
+        int index = metaObject()->indexOfProperty(it.key().toUtf8());
+        if (index < 0)
             continue;
-        }
-
-        componentSource += QString::fromLatin1("\treadonly property %1 %2%3\n").arg(type, name, val);
+        QMetaProperty property = metaObject()->property(index);
+        int notifyIndex = property.notifySignalIndex();
+        if (notifyIndex >= 0)
+            QMetaObject::activate(this, notifyIndex, nullptr);
     }
-
-    componentSource += "}\n";
-    QQmlComponent myComp(qmlEngine(this));
-    myComp.setData(componentSource.toUtf8(), QUrl("qrc:/qbackendobject/" + m_identifier));
-    m_dataObject = myComp.beginCreate(qmlContext(this));
-    if (m_dataObject == nullptr) {
-        qWarning(lcObject) << "Failed to create runtime object for " << m_identifier << componentSource.toUtf8().data();
-        qWarning(lcObject) << myComp.errorString();
-        return;
-    }
-    m_dataObject->setProperty("qbConnection", QVariant::fromValue<QObject*>(m_connection));
-    myComp.completeCreate();
-#endif
-
-    // XXX signal changes to properties
 }
 
 void QBackendObject::invokeMethod(const QByteArray& method, const QJSValue& data)

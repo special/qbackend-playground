@@ -7,6 +7,7 @@ Item {
     height: 800
 
     property var dataObject: backendProcess.root
+    onDataObjectChanged: console.log("data object:", JSON.stringify(dataObject))
 
     BackendProcess {
         id: backendProcess
@@ -125,8 +126,8 @@ Item {
             top: headerRow.bottom
         }
 
-        property var person: trigger, dataObject.mainPerson
-        onPersonChanged: console.log("person:", JSON.stringify(dataObject))
+        property var person: dataObject ? dataObject.mainPerson : null
+        onPersonChanged: console.log("person:", JSON.stringify(person))
         text: !person ? "unknown" : person.lastName + ", " + person.firstName + ": " + person.age + " years old"
         color: "black"
     }
