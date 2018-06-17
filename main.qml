@@ -130,6 +130,11 @@ Item {
         onPersonChanged: console.log("person:", JSON.stringify(person))
         text: !person ? "unknown" : person.lastName + ", " + person.firstName + ": " + person.age + " years old"
         color: "black"
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: { console.log("trying to call...", parent.person.BeOlder); parent.person.BeOlder(-3) }
+        }
     }
 
     /*Row {

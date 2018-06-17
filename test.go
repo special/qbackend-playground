@@ -7,9 +7,19 @@ import (
 )
 
 type Person struct {
+	Store *qbackend.Store `json:"-"`
+
 	FirstName string `json:"firstName"`
 	LastName  string `json:"lastName"`
 	Age       int    `json:"age"`
+}
+
+func (p *Person) BeOlder(years int) {
+	p.Age += years
+	// XXX store updated
+	// XXX this bidirectional reference thing is annoying. Something that indexed
+	// by ptr would be neat, maybe?
+	p.Store.Updated()
 }
 
 type generalData struct {
@@ -30,10 +40,10 @@ func (pm *PersonModel) AddNew() {
 func main() {
 	qb := qbackend.NewStdConnection()
 
-	mainPerson := Person{FirstName: "Robin", LastName: "Burchell", Age: 31}
-	mpStore, _ := qb.NewStore("thatguy", mainPerson)
+	mainPerson := &Person{FirstName: "Robin", LastName: "Burchell", Age: 31}
+	mainPerson.Store, _ = qb.NewStore("thatguy", mainPerson)
 
-	qb.SetRootObject(&generalData{TestData: "Now connected", TotalPeople: 666, MainPerson: mpStore})
+	qb.SetRootObject(&generalData{TestData: "Now connected", TotalPeople: 666, MainPerson: mainPerson.Store})
 
 	//gd := &generalData{TestData: "Now connected", TotalPeople: 666}
 	///*gds, _ :=*/ qb.NewStore("GeneralData", gd)

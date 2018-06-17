@@ -77,12 +77,14 @@ void QBackendModel::setConnection(QBackendAbstractConnection* connection)
 
 void QBackendModel::invokeMethod(const QString& method, const QJSValue& data)
 {
+#if 0
     QJSEngine *engine = qmlEngine(this);
     QJSValue global = engine->globalObject();
     QJSValue json = global.property("JSON");
     QJSValue stringify = json.property("stringify");
     QJSValue jsonData = stringify.call(QList<QJSValue>() << data);
     m_connection->invokeMethod(m_identifier, method, jsonData.toString().toUtf8());
+#endif
 }
 
 void QBackendModel::subscribeIfReady()

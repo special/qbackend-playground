@@ -291,18 +291,14 @@ QJsonObject QBackendConnection::waitForMessage(std::function<bool(const QJsonObj
     return re;
 }
 
-void QBackendConnection::invokeMethod(const QByteArray& identifier, const QString& method, const QByteArray& jsonData)
+void QBackendConnection::invokeMethod(const QByteArray& identifier, const QString& method, const QJsonArray& params)
 {
-    qCDebug(lcConnection) << "Invoking " << identifier << method << jsonData;
-
-    // It seems silly to encode and then decode this JSON just to reencode it, but that first encoding
-    // is done by JSON.stringify, which handles QJSValue correctly. This is the easiest way to work with it.
-    QJsonDocument params = QJsonDocument::fromJson(jsonData);
-
+    qCDebug(lcConnection) << "Invoking " << identifier << method << params;
     write(QJsonObject{
           {"command", "INVOKE"},
           {"identifier", QString::fromUtf8(identifier)},
-          {"parameters", params.array()}
+          {"method", method},
+          {"parameters", params}
     });
 }
 

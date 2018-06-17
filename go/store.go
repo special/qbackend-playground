@@ -77,6 +77,59 @@ func convertTypeName(name string) string {
 	return string(append(bytes.ToLower([]byte{name[0]}), name[1:]...))
 }
 
+func qbTypeName(t reflect.Type) string {
+	// XXX should this be unwrapping interfaces?
+	switch t.Kind() {
+	case reflect.Bool:
+		return "bool"
+
+	case reflect.Int:
+		fallthrough
+	case reflect.Int8:
+		fallthrough
+	case reflect.Int16:
+		fallthrough
+	case reflect.Int32:
+		fallthrough
+	case reflect.Int64:
+		fallthrough
+	case reflect.Uint:
+		fallthrough
+	case reflect.Uint8:
+		fallthrough
+	case reflect.Uint16:
+		fallthrough
+	case reflect.Uint32:
+		fallthrough
+	case reflect.Uint64:
+		return "int"
+
+	case reflect.Float32:
+		fallthrough
+	case reflect.Float64:
+		return "double"
+
+	case reflect.String:
+		// TODO also []byte?
+		return "string"
+
+	default:
+		var referenced *Store
+		if t == reflect.TypeOf(referenced) {
+			// XXX Need identifier, type; send in _qbackend_:object structure
+			// type name is enough, don't need full type info. it can be sent when
+			// the structure is actually needed; if we sent it here, it'd end up
+			// recursively sending loads of type infos.
+			//
+			// Might make sense to send type info for members along with values;
+			// in that case, it is fairly likely they will be wanted.
+			return "object"
+		} else {
+			return "var"
+		}
+	}
+}
+
 // Type returns the JSON type description for Data
 func (s *Store) Type() typeDescription {
 	// XXX
@@ -141,62 +194,24 @@ func (s *Store) Type() typeDescription {
 		// These rules do not exactly match how json will handle things, which could
 		// lead to future problems.
 		// TODO: Should this be unwrapping interfaces first?
-		var qbType string
-		switch field.Type.Kind() {
-		case reflect.Bool:
-			qbType = "bool"
-
-		case reflect.Int:
-			fallthrough
-		case reflect.Int8:
-			fallthrough
-		case reflect.Int16:
-			fallthrough
-		case reflect.Int32:
-			fallthrough
-		case reflect.Int64:
-			fallthrough
-		case reflect.Uint:
-			fallthrough
-		case reflect.Uint8:
-			fallthrough
-		case reflect.Uint16:
-			fallthrough
-		case reflect.Uint32:
-			fallthrough
-		case reflect.Uint64:
-			qbType = "int"
-
-		case reflect.Float32:
-			fallthrough
-		case reflect.Float64:
-			qbType = "double"
-
-		case reflect.String:
-			// TODO also []byte?
-			qbType = "string"
-
-		default:
-			var referenced *Store
-			if field.Type == reflect.TypeOf(referenced) {
-				referenced, _ = objectValue.Field(i).Interface().(*Store)
-				// XXX Need identifier, type; send in _qbackend_:object structure
-				// type name is enough, don't need full type info. it can be sent when
-				// the structure is actually needed; if we sent it here, it'd end up
-				// recursively sending loads of type infos.
-				//
-				// Might make sense to send type info for members along with values;
-				// in that case, it is fairly likely they will be wanted.
-				qbType = "object"
-			} else {
-				qbType = "var"
-			}
-		}
-
-		typeDesc.Properties[name] = qbType
+		typeDesc.Properties[name] = qbTypeName(field.Type)
 	}
 
 	// XXX methods
+	ptrType := reflect.PtrTo(objectType)
+	for i := 0; i < ptrType.NumMethod(); i++ {
+		method := ptrType.Method(i)
+		methodType := method.Type
+		// XXX exclude unexported
+
+		var paramTypes []string
+		for p := 1; p < methodType.NumIn(); p++ {
+			inType := methodType.In(p)
+			paramTypes = append(paramTypes, qbTypeName(inType))
+		}
+
+		typeDesc.Methods[method.Name] = paramTypes
+	}
 
 	// XXX signals
 

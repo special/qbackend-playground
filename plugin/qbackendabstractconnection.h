@@ -35,7 +35,7 @@ public:
     virtual void subscribe(const QByteArray& identifier, QBackendRemoteObject* object) = 0;
     virtual void subscribeSync(const QByteArray& identifier, QBackendRemoteObject* object) = 0;
     virtual void unsubscribe(const QByteArray& identifier, QBackendRemoteObject* object) = 0;
-    virtual void invokeMethod(const QByteArray& identifier, const QString& method, const QByteArray& jsonData) = 0;
+    virtual void invokeMethod(const QByteArray& identifier, const QString& method, const QJsonArray& params) = 0;
 };
 
 

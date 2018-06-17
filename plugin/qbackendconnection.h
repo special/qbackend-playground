@@ -29,7 +29,7 @@ public:
     Q_INVOKABLE QBackendObject *object(const QByteArray &identifier) const;
     QBackendObject *ensureObject(const QJsonObject &object);
 
-    void invokeMethod(const QByteArray& identifier, const QString& method, const QByteArray& jsonData) override;
+    void invokeMethod(const QByteArray& identifier, const QString& method, const QJsonArray& params) override;
     void subscribe(const QByteArray& identifier, QBackendRemoteObject* object) override;
     void subscribeSync(const QByteArray& identifier, QBackendRemoteObject* object) override;
     void unsubscribe(const QByteArray& identifier, QBackendRemoteObject* object) override;

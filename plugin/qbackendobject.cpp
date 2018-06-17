@@ -112,6 +112,39 @@ int QBackendObject::qt_metacall(QMetaObject::Call c, int id, void **argv)
         }
 
         id -= count;
+    } else if (c == QMetaObject::InvokeMetaMethod) {
+        int count = m_metaObject->methodCount() - m_metaObject->methodOffset();
+        QMetaMethod method = m_metaObject->method(id + m_metaObject->methodOffset());
+
+        if (method.isValid()) {
+            QJsonArray args;
+            for (int i = 0; i < method.parameterCount(); i++) {
+                switch (method.parameterType(i)) {
+                case QMetaType::Bool:
+                    args.append(QJsonValue(*reinterpret_cast<bool*>(argv[i+1])));
+                    break;
+                case QMetaType::Double:
+                    args.append(QJsonValue(*reinterpret_cast<double*>(argv[i+1])));
+                    break;
+                case QMetaType::Int:
+                    args.append(QJsonValue(*reinterpret_cast<int*>(argv[i+1])));
+                    break;
+                case QMetaType::QString:
+                    args.append(QJsonValue(*reinterpret_cast<QString*>(argv[i+1])));
+                    break;
+                case QMetaType::QVariant:
+                    args.append(reinterpret_cast<QVariant*>(argv[i+1])->toJsonValue());
+                    break;
+                default:
+                    // XXX
+                    break;
+                }
+            }
+
+            m_connection->invokeMethod(m_identifier, QString::fromUtf8(method.name()), args);
+        }
+
+        id -= count;
     }
 
     return id;
@@ -168,7 +201,8 @@ QMetaObject *metaObjectFromType(const QJsonObject &type)
     QJsonObject methods = type.value("methods").toObject();
     for (auto it = methods.constBegin(); it != methods.constEnd(); it++) {
         // XXX lots of things also
-        QString signature = it.key() + "(";
+        QString name = it.key();
+        QString signature = name + "(";
         QJsonArray paramTypes = it.value().toArray();
         for (const QJsonValue &type : paramTypes) {
             signature += qtTypesFromType(type.toString()).first + ",";
@@ -177,8 +211,8 @@ QMetaObject *metaObjectFromType(const QJsonObject &type)
             signature.chop(1);
         }
         signature += ")";
-        qCDebug(lcObject) << " -- method:" << it.key() << signature;
-        b.addMethod(it.key().toUtf8(), signature.toUtf8());
+        qCDebug(lcObject) << " -- method:" << name << signature;
+        b.addMethod(signature.toUtf8());
     }
 
     QJsonObject signalsObj = type.value("signals").toObject();
@@ -261,12 +295,14 @@ void QBackendObject::doReset(const QJsonObject& object)
 
 void QBackendObject::invokeMethod(const QByteArray& method, const QJSValue& data)
 {
+#if 0
     QJSEngine *engine = qmlEngine(this);
     QJSValue global = engine->globalObject();
     QJSValue json = global.property("JSON");
     QJSValue stringify = json.property("stringify");
     QJSValue jsonData = stringify.call(QList<QJSValue>() << data);
     m_connection->invokeMethod(m_identifier, method, jsonData.toString().toUtf8());
+#endif
 }
 
 #if 0
