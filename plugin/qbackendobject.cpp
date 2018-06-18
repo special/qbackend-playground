@@ -20,7 +20,7 @@ class QBackendObjectProxy : public QBackendRemoteObject
 public:
     QBackendObjectProxy(QBackendObject* model);
     void objectFound(const QJsonObject& object) override;
-    void methodInvoked(const QString& method, const QJsonValue& params) override;
+    void methodInvoked(const QString& method, const QJsonArray& params) override;
 
 private:
     QBackendObject *m_object = nullptr;
@@ -64,6 +64,56 @@ const QMetaObject *QBackendObject::metaObject() const
     return m_metaObject;
 }
 
+// Construct a copy of 'v' (which is type 'type') at 'p', or allocate if 'p' is nullptr
+template<typename T> void *copyMetaArg(QMetaType::Type type, void *p, const T &v)
+{
+    if (!p)
+        p = QMetaType::create(type, reinterpret_cast<const void*>(&v));
+    else
+        p = QMetaType::construct(type, p, reinterpret_cast<const void*>(&v));
+    return p;
+}
+
+void *QBackendObject::jsonValueToMetaArgs(QMetaType::Type type, const QJsonValue &value, void *p)
+{
+    switch (type) {
+    case QMetaType::Bool:
+        p = copyMetaArg(type, p, value.toBool());
+        break;
+
+    case QMetaType::Double:
+        p = copyMetaArg(type, p, value.toDouble());
+        break;
+
+    case QMetaType::Int:
+        p = copyMetaArg(type, p, value.toInt());
+        break;
+
+    case QMetaType::QString:
+        p = copyMetaArg(type, p, value.toString());
+        break;
+
+    case QMetaType::QVariant:
+        p = copyMetaArg(type, p, value.toVariant());
+        break;
+
+    default:
+        if (type == QMetaType::type("QBackendObject*")) {
+            QBackendObject *v = m_connection->ensureObject(value.toObject());
+            if (!p)
+                p = QMetaType::create(type, reinterpret_cast<void*>(&v));
+            else
+                *reinterpret_cast<QBackendObject**>(p) = v;
+        } else {
+            // XXX May be possible to do some QVariant conversion here?
+            qCWarning(lcObject) << "Unknown type" << QMetaType::typeName(type) << "in JSON value conversion";
+        }
+        break;
+    }
+
+    return p;
+}
+
 int QBackendObject::qt_metacall(QMetaObject::Call c, int id, void **argv)
 {
     id = QObject::qt_metacall(c, id, argv);
@@ -81,35 +131,7 @@ int QBackendObject::qt_metacall(QMetaObject::Call c, int id, void **argv)
         int count = m_metaObject->propertyCount() - m_metaObject->propertyOffset();
         QMetaProperty property = m_metaObject->property(id + m_metaObject->propertyOffset());
 
-        if (property.isValid()) {
-            QJsonValue value = m_dataObject.value(property.name());
-
-            switch (static_cast<QMetaType::Type>(property.type())) {
-            case QMetaType::Bool:
-                *reinterpret_cast<bool*>(argv[0]) = value.toBool();
-                break;
-            case QMetaType::Double:
-                *reinterpret_cast<double*>(argv[0]) = value.toDouble();
-                break;
-            case QMetaType::Int:
-                *reinterpret_cast<int*>(argv[0]) = value.toInt();
-                break;
-            case QMetaType::QString:
-                *reinterpret_cast<QString*>(argv[0]) = value.toString();
-                break;
-            case QMetaType::QVariant:
-                *reinterpret_cast<QVariant*>(argv[0]) = value.toVariant();
-                break;
-            default:
-                if (property.userType() == QMetaType::type("QBackendObject*")) {
-                    *reinterpret_cast<QBackendObject**>(argv[0]) = m_connection->ensureObject(value.toObject());
-                } else {
-                    // XXX May be possible to do some QVariant conversion here?
-                    qCWarning(lcObject) << "Unknown type" << property.typeName() << "in property read of" << property.name();
-                }
-                break;
-            }
-        }
+        jsonValueToMetaArgs(static_cast<QMetaType::Type>(property.userType()), m_dataObject.value(property.name()), argv[0]);
 
         id -= count;
     } else if (c == QMetaObject::InvokeMetaMethod) {
@@ -198,10 +220,31 @@ QMetaObject *metaObjectFromType(const QJsonObject &type)
         b.addProperty(it.key().toUtf8(), qtTypesFromType(it.value().toString()).first.toUtf8(), notifier);
     }
 
+    QJsonObject signalsObj = type.value("signals").toObject();
+    for (auto it = signalsObj.constBegin(); it != signalsObj.constEnd(); it++) {
+        QString signature = it.key() + "(";
+        QList<QByteArray> paramNames;
+        QJsonArray params = it.value().toArray();
+        for (const QJsonValue &p : params) {
+            auto pv = p.toString().split(" ");
+            signature += qtTypesFromType(pv[0]).first + ",";
+            paramNames.append(pv[1].toUtf8());
+        }
+        if (signature.endsWith(",")) {
+            signature.chop(1);
+        }
+        signature += ")";
+        QMetaMethodBuilder method = b.addSignal(signature.toUtf8());
+        method.setParameterNames(paramNames);
+        qCDebug(lcObject) << " -- signal:" << signature << method.index();
+    }
+
     QJsonObject methods = type.value("methods").toObject();
     for (auto it = methods.constBegin(); it != methods.constEnd(); it++) {
         // XXX lots of things also
         QString name = it.key();
+        // XXX can't just go changing this..
+        //name = name[0].toLower() + name.mid(1);
         QString signature = name + "(";
         QJsonArray paramTypes = it.value().toArray();
         for (const QJsonValue &type : paramTypes) {
@@ -213,23 +256,6 @@ QMetaObject *metaObjectFromType(const QJsonObject &type)
         signature += ")";
         qCDebug(lcObject) << " -- method:" << name << signature;
         b.addMethod(signature.toUtf8());
-    }
-
-    QJsonObject signalsObj = type.value("signals").toObject();
-    for (auto it = signalsObj.constBegin(); it != signalsObj.constEnd(); it++) {
-        // XXX this is just a copy of the code for methods
-        // XXX lots of things also
-        QString signature = it.key() + "(";
-        QJsonArray paramTypes = it.value().toArray();
-        for (const QJsonValue &type : paramTypes) {
-            signature += qtTypesFromType(type.toString()).first + ",";
-        }
-        if (signature.endsWith(",")) {
-            signature.chop(1);
-        }
-        signature += ")";
-        qCDebug(lcObject) << " -- signal:" << signature;
-        b.addSignal(signature.toUtf8());
     }
 
     return b.toMetaObject();
@@ -293,46 +319,38 @@ void QBackendObject::doReset(const QJsonObject& object)
     }
 }
 
-void QBackendObject::invokeMethod(const QByteArray& method, const QJSValue& data)
+void QBackendObjectProxy::methodInvoked(const QString& name, const QJsonArray& params)
 {
-#if 0
-    QJSEngine *engine = qmlEngine(this);
-    QJSValue global = engine->globalObject();
-    QJSValue json = global.property("JSON");
-    QJSValue stringify = json.property("stringify");
-    QJSValue jsonData = stringify.call(QList<QJSValue>() << data);
-    m_connection->invokeMethod(m_identifier, method, jsonData.toString().toUtf8());
-#endif
-}
+    // Technically, this should find the signal by its full signature, to enable overloads.
+    // Since we're mirroring a Go object, overloaded names don't really make sense, so we can
+    // cheat and disallow them.
+    const QMetaObject *metaObject = m_object->metaObject();
+    for (int i = metaObject->methodOffset(); i < metaObject->methodCount(); i++) {
+        QMetaMethod method = metaObject->method(i);
+        if (method.methodType() != QMetaMethod::Signal || method.name() != name)
+            continue;
 
-#if 0
-        QJsonObject obj;
-        for (auto it = changedProperties.constBegin(); it != changedProperties.constEnd(); it++) {
-            qCDebug(lcObject) << "Requesting change on value " << it.key() << " on identifier " << m_identifier << " to " << it.value();
-            obj.insert(it.key(), QJsonValue::fromVariant(it.value()));
+        qCDebug(lcObject) << "Found signal to emit" << name << method.methodIndex();
+
+        if (method.parameterCount() != params.count()) {
+            qCWarning(lcObject) << "Signal" << method.name() << "emitted with incorrect parameters; expected" << method.methodSignature() << "got parameters" << params;
+            break;
         }
-        changedProperties.clear();
-#endif
 
-void QBackendObjectProxy::methodInvoked(const QString& method, const QJsonValue& params)
-{
-#if 0
-    QJsonObject object = document.object();
-
-    const QMetaObject *mo = metaObject();
-    const int offset = mo->propertyOffset();
-    const int count = mo->propertyCount();
-    for (int i = offset; i < count; ++i) {
-        QMetaProperty property = mo->property(i);
-
-        const QVariant previousValue = readProperty(property);
-        const QVariant currentValue = object.value(property.name()).toVariant();
-
-        if (!currentValue.isNull() && (!previousValue.isValid()
-                || (currentValue.canConvert(previousValue.type()) && previousValue != currentValue))) {
-            qCDebug(lcObject) << "Got change on value " << property.name() << " on identifier " << m_identifier << " to " << currentValue;
-            property.write(this, currentValue);
+        // Marshal arguments for the signal. [0] is for return value, which is void for signals.
+        QVector<void*> argv(method.parameterCount()+1);
+        for (int j = 0; j < method.parameterCount(); j++) {
+            QMetaType::Type paramType = static_cast<QMetaType::Type>(method.parameterType(j));
+            argv[j+1] = m_object->jsonValueToMetaArgs(paramType, params[j], nullptr);
         }
+
+        qCDebug(lcObject) << "Emitting signal" << name << "with args" << params;
+        QMetaObject::activate(m_object, i, argv.data());
+
+        // Free parameters in argv
+        for (int j = 0; j < method.parameterCount(); j++)
+            QMetaType::destroy(method.parameterType(j), argv[j+1]);
+
+        break;
     }
-#endif
 }

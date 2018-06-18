@@ -238,7 +238,7 @@ void QBackendConnection::handleMessage(const QByteArray &message) {
     } else if (command == "EMIT") {
         QByteArray identifier = cmd.value("identifier").toString().toUtf8();
         QString method = cmd.value("method").toString();
-        QJsonValue params = cmd.value("parameters");
+        QJsonArray params = cmd.value("parameters").toArray();
 
         qCDebug(lcConnection) << "Emit " << method << " on " << identifier << params;
         for (auto obj : m_subscribedObjects.values(identifier)) {

@@ -16,7 +16,7 @@ public:
     virtual void objectFound(const QJsonObject& object) = 0;
 
     // Called when a method is invoked on this object
-    virtual void methodInvoked(const QString& method, const QJsonValue& params) = 0;
+    virtual void methodInvoked(const QString& method, const QJsonArray& params) = 0;
 };
 
 // A backend connection is the class that talks to a remote peer and does things
@@ -35,7 +35,7 @@ public:
     virtual void subscribe(const QByteArray& identifier, QBackendRemoteObject* object) = 0;
     virtual void subscribeSync(const QByteArray& identifier, QBackendRemoteObject* object) = 0;
     virtual void unsubscribe(const QByteArray& identifier, QBackendRemoteObject* object) = 0;
-    virtual void invokeMethod(const QByteArray& identifier, const QString& method, const QJsonArray& params) = 0;
+    virtual void invokeMethod(const QByteArray& identifier, const QString& method, const QJsonArray& paramsm) = 0;
 };
 
 

@@ -176,28 +176,42 @@ func (s *Store) Type() typeDescription {
 			// Unexported field
 			continue
 		}
-		if field.Tag.Get("json") == "-" {
-			// Ignored by JSON
-			continue
-		}
-
-		// Property name, using JSON tag if specified
 		name := convertTypeName(field.Name)
-		if tag := field.Tag.Get("json"); len(tag) > 0 {
-			tags := strings.Split(tag, ",")
-			if len(tags) > 0 && len(tags[0]) > 0 {
-				name = tags[0]
-			}
-		}
 
-		// Determine if this field will be string, int, double, bool, var, or object
-		// These rules do not exactly match how json will handle things, which could
-		// lead to future problems.
-		// TODO: Should this be unwrapping interfaces first?
-		typeDesc.Properties[name] = qbTypeName(field.Type)
+		// Signals are represented by func properties, with a qbackend tag
+		// giving a name for each parameter, which is required for QML.
+		if field.Type.Kind() == reflect.Func {
+			paramNames := strings.Split(field.Tag.Get("qbackend"), ",")
+			if field.Type.NumIn() > 0 && len(paramNames) != field.Type.NumIn() {
+				// XXX warnings and errors would be real useful
+				continue
+			}
+
+			var params []string
+			for p := 0; p < field.Type.NumIn(); p++ {
+				inType := field.Type.In(p)
+				params = append(params, qbTypeName(inType)+" "+paramNames[p])
+			}
+			typeDesc.Signals[name] = params
+		} else {
+			if field.Tag.Get("json") == "-" {
+				// Ignored by JSON
+				continue
+			}
+			if tag := field.Tag.Get("json"); len(tag) > 0 {
+				tags := strings.Split(tag, ",")
+				if len(tags) > 0 && len(tags[0]) > 0 {
+					name = tags[0]
+				}
+			}
+			// Determine if this field will be string, int, double, bool, var, or object
+			// These rules do not exactly match how json will handle things, which could
+			// lead to future problems.
+			// TODO: Should this all be unwrapping interfaces first?
+			typeDesc.Properties[name] = qbTypeName(field.Type)
+		}
 	}
 
-	// XXX methods
 	ptrType := reflect.PtrTo(objectType)
 	for i := 0; i < ptrType.NumMethod(); i++ {
 		method := ptrType.Method(i)

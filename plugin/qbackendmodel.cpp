@@ -15,7 +15,7 @@ public:
     QBackendModelProxy(QBackendInternalModel *model);
 
     void objectFound(const QJsonObject& object) override;
-    void methodInvoked(const QString& method, const QJsonValue& params) override;
+    void methodInvoked(const QString& method, const QJsonArray& params) override;
 
 private:
     QBackendInternalModel *m_model;
@@ -255,8 +255,9 @@ void QBackendModelProxy::objectFound(const QJsonObject& object)
     m_model->doReset(object);
 }
 
-void QBackendModelProxy::methodInvoked(const QString& method, const QJsonValue& params)
+void QBackendModelProxy::methodInvoked(const QString& method, const QJsonArray& params)
 {
+#if 0
     QJsonObject args = params.toObject();
 
     if (method == "insert") {
@@ -287,4 +288,5 @@ void QBackendModelProxy::methodInvoked(const QString& method, const QJsonValue& 
     } else {
         qCWarning(lcModel) << "unknown method" << method << "invoked";
     }
+#endif
 }

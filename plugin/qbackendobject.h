@@ -22,12 +22,12 @@ public:
     // ### not public
     void doReset(const QJsonObject& object);
 
-    Q_INVOKABLE void invokeMethod(const QByteArray& method, const QJSValue& data);
-
     virtual const QMetaObject *metaObject() const override;
     virtual int qt_metacall(QMetaObject::Call c, int id, void **argv) override;
 
 private:
+    friend class QBackendObjectProxy;
+
     QVariant readProperty(const QMetaProperty& property);
 
     QByteArray m_identifier;
@@ -36,6 +36,8 @@ private:
     QMetaObject *m_metaObject = nullptr;
     QJsonObject m_dataObject;
     bool m_dataReady = false;
+
+    void *jsonValueToMetaArgs(QMetaType::Type type, const QJsonValue &value, void *p = nullptr);
 };
 
 Q_DECLARE_METATYPE(QBackendObject*)

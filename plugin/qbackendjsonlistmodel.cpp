@@ -64,7 +64,7 @@ class QBackendJsonListModelProxy : public QBackendRemoteObject
 public:
     QBackendJsonListModelProxy(QBackendJsonListModel* model);
     void objectFound(const QJsonObject& object) override;
-    void methodInvoked(const QString& method, const QJsonValue& params) override;
+    void methodInvoked(const QString& method, const QJsonArray& params) override;
 
 private:
     QBackendJsonListModel *m_model = nullptr;
@@ -164,8 +164,9 @@ void QBackendJsonListModel::doRemove(const QUuid& uuid)
     endRemoveRows();
 }
 
-void QBackendJsonListModelProxy::methodInvoked(const QString& method, const QJsonValue &params)
+void QBackendJsonListModelProxy::methodInvoked(const QString& method, const QJsonArray &params)
 {
+#if 0
     if (method == "set") {
         // ### handle arrays, not just objects
         if (!params.isObject()) {
@@ -194,6 +195,7 @@ void QBackendJsonListModelProxy::methodInvoked(const QString& method, const QJso
         QUuid uuid = object.value("UUID").toString().toUtf8();
         m_model->doRemove(uuid);
     }
+#endif
 }
 
 // ### error on componentComplete if not set
