@@ -223,11 +223,11 @@ void QBackendConnection::handleMessage(const QByteArray &message) {
             m_rootObject = new QBackendObject(this, "root", cmd.value("type").toObject(), this);
             m_objects.insert("root", m_rootObject);
             QQmlEngine::setContextForObject(m_rootObject, qmlContext(this));
-            m_rootObject->doReset(cmd.value("data").toObject());
+            m_rootObject->resetData(cmd.value("data").toObject());
             emit rootObjectChanged();
         } else {
             // XXX assert that type has not changed
-            m_rootObject->doReset(cmd.value("data").toObject());
+            m_rootObject->resetData(cmd.value("data").toObject());
         }
     } else if (command == "OBJECT_CREATE") {
         QByteArray identifier = cmd.value("identifier").toString().toUtf8();

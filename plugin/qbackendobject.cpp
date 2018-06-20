@@ -9,53 +9,23 @@
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QtCore/private/qmetaobjectbuilder_p.h>
-
 #include "qbackendobject.h"
-#include "qbackendabstractconnection.h"
+#include "qbackendobject_p.h"
 
 Q_LOGGING_CATEGORY(lcObject, "backend.object")
 
-class QBackendObjectProxy : public QBackendRemoteObject
-{
-public:
-    QBackendObjectProxy(QBackendObject* model);
-    void objectFound(const QJsonObject& object) override;
-    void methodInvoked(const QString& method, const QJsonArray& params) override;
-
-private:
-    QBackendObject *m_object = nullptr;
-};
-
-QMetaObject *metaObjectFromType(const QJsonObject &type);
-std::pair<QString,QString> qtTypesFromType(const QString &type);
-
 QBackendObject::QBackendObject(QBackendAbstractConnection *connection, QByteArray identifier, const QJsonObject &type, QObject *parent)
     : QObject(parent)
-    , m_identifier(identifier)
-    , m_connection(connection)
-    , m_metaObject(metaObjectFromType(type))
+    , d(new BackendObjectPrivate(this, connection, identifier))
+    , m_metaObject(d->metaObjectFromType(type))
 {
-    m_proxy = new QBackendObjectProxy(this);
 }
 
 QBackendObject::~QBackendObject()
 {
+    d->deleteLater();
     // XXX clean up proxy, subscription, etc
     free(m_metaObject);
-}
-
-/* Identifier is a constant, unique, arbitrary identifier for this object;
- * it can be thought of as equivalent to a pointer, except that identifiers
- * are never reused within a connection. An object's identifier is generated
- * when it is created and cannot change. */
-QByteArray QBackendObject::identifier() const
-{
-    return m_identifier;
-}
-
-QBackendAbstractConnection* QBackendObject::connection() const
-{
-    return m_connection;
 }
 
 const QMetaObject *QBackendObject::metaObject() const
@@ -64,8 +34,150 @@ const QMetaObject *QBackendObject::metaObject() const
     return m_metaObject;
 }
 
+int QBackendObject::qt_metacall(QMetaObject::Call c, int id, void **argv)
+{
+    id = QObject::qt_metacall(c, id, argv);
+    if (id < 0)
+        return id;
+    return d->metacall(c, id, argv);
+}
+
+void QBackendObject::resetData(const QJsonObject &data)
+{
+    d->resetData(data);
+}
+
+BackendObjectPrivate::BackendObjectPrivate(QObject *object, QBackendAbstractConnection *connection, const QByteArray &identifier)
+    : m_object(object)
+    , m_connection(connection)
+    , m_identifier(identifier)
+{
+}
+
+BackendObjectPrivate::~BackendObjectPrivate()
+{
+    // XXX unsubscribe or whatever else is necessary here
+}
+
+void BackendObjectPrivate::objectFound(const QJsonObject &object)
+{
+    resetData(object);
+}
+
+void BackendObjectPrivate::methodInvoked(const QString &name, const QJsonArray &params)
+{
+    // Technically, this should find the signal by its full signature, to enable overloads.
+    // Since we're mirroring a Go object, overloaded names don't really make sense, so we can
+    // cheat and disallow them.
+    const QMetaObject *metaObject = m_object->metaObject();
+    for (int i = metaObject->methodOffset(); i < metaObject->methodCount(); i++) {
+        QMetaMethod method = metaObject->method(i);
+        if (method.methodType() != QMetaMethod::Signal || method.name() != name)
+            continue;
+
+        if (method.parameterCount() != params.count()) {
+            qCWarning(lcObject) << "Signal" << method.name() << "emitted with incorrect parameters; expected" << method.methodSignature() << "got parameters" << params;
+            break;
+        }
+
+        // Marshal arguments for the signal. [0] is for return value, which is void for signals.
+        QVector<void*> argv(method.parameterCount()+1);
+        for (int j = 0; j < method.parameterCount(); j++) {
+            QMetaType::Type paramType = static_cast<QMetaType::Type>(method.parameterType(j));
+            argv[j+1] = jsonValueToMetaArgs(paramType, params[j], nullptr);
+        }
+
+        qCDebug(lcObject) << "Emitting signal" << name << "with args" << params;
+        QMetaObject::activate(m_object, i, argv.data());
+
+        // Free parameters in argv
+        for (int j = 0; j < method.parameterCount(); j++)
+            QMetaType::destroy(method.parameterType(j), argv[j+1]);
+
+        break;
+    }
+}
+
+void BackendObjectPrivate::resetData(const QJsonObject& object)
+{
+    qCDebug(lcObject) << "Resetting " << m_identifier << " to " << object;
+    m_dataObject = object;
+    m_dataReady = true;
+
+    // XXX Do something smarter than signaling for every property
+    // XXX This is also wrong: any properties in the old m_dataObject that
+    // aren't in object have also changed.
+    const QMetaObject *metaObject = m_object->metaObject();
+    for (auto it = m_dataObject.constBegin(); it != m_dataObject.constEnd(); it++) {
+        int index = metaObject->indexOfProperty(it.key().toUtf8());
+        if (index < 0)
+            continue;
+        QMetaProperty property = metaObject->property(index);
+        int notifyIndex = property.notifySignalIndex();
+        if (notifyIndex >= 0)
+            QMetaObject::activate(m_object, notifyIndex, nullptr);
+    }
+}
+
+// Called by the front m_object's qt_metacall to handle backend calls
+int BackendObjectPrivate::metacall(QMetaObject::Call c, int id, void **argv)
+{
+    const QMetaObject *metaObject = m_object->metaObject();
+
+    if (c == QMetaObject::ReadProperty) {
+        if (!m_dataReady) {
+            // XXX This ends up in objectFound and sends notify signals, which sounds a little
+            // dangerous.. I could imagine it creating fake binding loops. They could be deferred
+            // I guess?
+            m_connection->subscribeSync(m_identifier, this);
+        }
+
+        int count = metaObject->propertyCount() - metaObject->propertyOffset();
+        QMetaProperty property = metaObject->property(id + metaObject->propertyOffset());
+
+        jsonValueToMetaArgs(static_cast<QMetaType::Type>(property.userType()), m_dataObject.value(property.name()), argv[0]);
+
+        id -= count;
+    } else if (c == QMetaObject::InvokeMetaMethod) {
+        int count = metaObject->methodCount() - metaObject->methodOffset();
+        QMetaMethod method = metaObject->method(id + metaObject->methodOffset());
+
+        if (method.isValid()) {
+            QJsonArray args;
+            for (int i = 0; i < method.parameterCount(); i++) {
+                switch (method.parameterType(i)) {
+                case QMetaType::Bool:
+                    args.append(QJsonValue(*reinterpret_cast<bool*>(argv[i+1])));
+                    break;
+                case QMetaType::Double:
+                    args.append(QJsonValue(*reinterpret_cast<double*>(argv[i+1])));
+                    break;
+                case QMetaType::Int:
+                    args.append(QJsonValue(*reinterpret_cast<int*>(argv[i+1])));
+                    break;
+                case QMetaType::QString:
+                    args.append(QJsonValue(*reinterpret_cast<QString*>(argv[i+1])));
+                    break;
+                case QMetaType::QVariant:
+                    args.append(reinterpret_cast<QVariant*>(argv[i+1])->toJsonValue());
+                    break;
+                default:
+                    // XXX
+                    break;
+                }
+            }
+
+            m_connection->invokeMethod(m_identifier, QString::fromUtf8(method.name()), args);
+        }
+
+        id -= count;
+    }
+
+    return id;
+}
+
 // Construct a copy of 'v' (which is type 'type') at 'p', or allocate if 'p' is nullptr
-template<typename T> void *copyMetaArg(QMetaType::Type type, void *p, const T &v)
+template<typename T> static void *copyMetaArg(QMetaType::Type type, void *p, const T &v)
 {
     if (!p)
         p = QMetaType::create(type, reinterpret_cast<const void*>(&v));
@@ -74,7 +186,7 @@ template<typename T> void *copyMetaArg(QMetaType::Type type, void *p, const T &v
     return p;
 }
 
-void *QBackendObject::jsonValueToMetaArgs(QMetaType::Type type, const QJsonValue &value, void *p)
+void *BackendObjectPrivate::jsonValueToMetaArgs(QMetaType::Type type, const QJsonValue &value, void *p)
 {
     switch (type) {
     case QMetaType::Bool:
@@ -114,75 +226,6 @@ void *QBackendObject::jsonValueToMetaArgs(QMetaType::Type type, const QJsonValue
     return p;
 }
 
-int QBackendObject::qt_metacall(QMetaObject::Call c, int id, void **argv)
-{
-    id = QObject::qt_metacall(c, id, argv);
-    if (id < 0)
-        return id;
-
-    if (c == QMetaObject::ReadProperty) {
-        if (!m_dataReady) {
-            // XXX This ends up in doReset and sends notify signals, which sounds a little
-            // dangerous.. I could imagine it creating fake binding loops. They could be deferred
-            // I guess?
-            m_connection->subscribeSync(m_identifier, m_proxy);
-        }
-
-        int count = m_metaObject->propertyCount() - m_metaObject->propertyOffset();
-        QMetaProperty property = m_metaObject->property(id + m_metaObject->propertyOffset());
-
-        jsonValueToMetaArgs(static_cast<QMetaType::Type>(property.userType()), m_dataObject.value(property.name()), argv[0]);
-
-        id -= count;
-    } else if (c == QMetaObject::InvokeMetaMethod) {
-        int count = m_metaObject->methodCount() - m_metaObject->methodOffset();
-        QMetaMethod method = m_metaObject->method(id + m_metaObject->methodOffset());
-
-        if (method.isValid()) {
-            QJsonArray args;
-            for (int i = 0; i < method.parameterCount(); i++) {
-                switch (method.parameterType(i)) {
-                case QMetaType::Bool:
-                    args.append(QJsonValue(*reinterpret_cast<bool*>(argv[i+1])));
-                    break;
-                case QMetaType::Double:
-                    args.append(QJsonValue(*reinterpret_cast<double*>(argv[i+1])));
-                    break;
-                case QMetaType::Int:
-                    args.append(QJsonValue(*reinterpret_cast<int*>(argv[i+1])));
-                    break;
-                case QMetaType::QString:
-                    args.append(QJsonValue(*reinterpret_cast<QString*>(argv[i+1])));
-                    break;
-                case QMetaType::QVariant:
-                    args.append(reinterpret_cast<QVariant*>(argv[i+1])->toJsonValue());
-                    break;
-                default:
-                    // XXX
-                    break;
-                }
-            }
-
-            m_connection->invokeMethod(m_identifier, QString::fromUtf8(method.name()), args);
-        }
-
-        id -= count;
-    }
-
-    return id;
-}
-
-QBackendObjectProxy::QBackendObjectProxy(QBackendObject* object)
-    : m_object(object)
-{
-
-}
-
-void QBackendObjectProxy::objectFound(const QJsonObject& object)
-{
-    m_object->doReset(object);
-}
-
 /* Type definitions:
  *
  * {
@@ -204,8 +247,28 @@ void QBackendObjectProxy::objectFound(const QJsonObject& object)
  * var can hold any JSON type, including JSON objects.
  * var can also hold qbackend objects, which are recognized by a special property.
  */
+
+/* Object structure:
+ *
+ * {
+ *   "_qbackend_": "object",
+ *   "identifier": "123",
+ *   // This is a full type definition object for types that have not been previously defined
+ *   "type": "Person",
+ *   "data": {
+ *     "fullName": "Abazza Bipedal",
+ *     "id": 6
+ *   }
+ * }
+ *
+ * These are tagged with _qbackend_ to allow them to be identified as values in data,
+ * even if the type is not strict.
+ *
+ * Unless otherwise noted, "data" is comprehensive and any property not included gets a default value.
+ */
+
 // XXX error handling
-QMetaObject *metaObjectFromType(const QJsonObject &type)
+QMetaObject *BackendObjectPrivate::metaObjectFromType(const QJsonObject &type)
 {
     QMetaObjectBuilder b;
     b.setClassName(type.value("name").toString().toUtf8());
@@ -262,7 +325,7 @@ QMetaObject *metaObjectFromType(const QJsonObject &type)
 }
 
 // Qt, QML
-std::pair<QString,QString> qtTypesFromType(const QString &type)
+std::pair<QString,QString> BackendObjectPrivate::qtTypesFromType(const QString &type)
 {
     if (type == "string")
         return {"QString","string"};
@@ -280,77 +343,3 @@ std::pair<QString,QString> qtTypesFromType(const QString &type)
         return {"QVariant","var"};
 }
 
-/* Object structure:
- *
- * {
- *   "_qbackend_": "object",
- *   "identifier": "123",
- *   // This is a full type definition object for types that have not been previously defined
- *   "type": "Person",
- *   "data": {
- *     "fullName": "Abazza Bipedal",
- *     "id": 6
- *   }
- * }
- *
- * These are tagged with _qbackend_ to allow them to be identified as values in data,
- * even if the type is not strict.
- *
- * Unless otherwise noted, "data" is comprehensive and any property not included gets a default value.
- */
-
-void QBackendObject::doReset(const QJsonObject& object)
-{
-    qCDebug(lcObject) << "Resetting " << m_identifier << " to " << object;
-    m_dataObject = object;
-    m_dataReady = true;
-
-    // XXX Do something smarter than signaling for every property
-    // XXX This is also wrong: any properties in the old m_dataObject that
-    // aren't in object have also changed.
-    for (auto it = m_dataObject.constBegin(); it != m_dataObject.constEnd(); it++) {
-        int index = metaObject()->indexOfProperty(it.key().toUtf8());
-        if (index < 0)
-            continue;
-        QMetaProperty property = metaObject()->property(index);
-        int notifyIndex = property.notifySignalIndex();
-        if (notifyIndex >= 0)
-            QMetaObject::activate(this, notifyIndex, nullptr);
-    }
-}
-
-void QBackendObjectProxy::methodInvoked(const QString& name, const QJsonArray& params)
-{
-    // Technically, this should find the signal by its full signature, to enable overloads.
-    // Since we're mirroring a Go object, overloaded names don't really make sense, so we can
-    // cheat and disallow them.
-    const QMetaObject *metaObject = m_object->metaObject();
-    for (int i = metaObject->methodOffset(); i < metaObject->methodCount(); i++) {
-        QMetaMethod method = metaObject->method(i);
-        if (method.methodType() != QMetaMethod::Signal || method.name() != name)
-            continue;
-
-        qCDebug(lcObject) << "Found signal to emit" << name << method.methodIndex();
-
-        if (method.parameterCount() != params.count()) {
-            qCWarning(lcObject) << "Signal" << method.name() << "emitted with incorrect parameters; expected" << method.methodSignature() << "got parameters" << params;
-            break;
-        }
-
-        // Marshal arguments for the signal. [0] is for return value, which is void for signals.
-        QVector<void*> argv(method.parameterCount()+1);
-        for (int j = 0; j < method.parameterCount(); j++) {
-            QMetaType::Type paramType = static_cast<QMetaType::Type>(method.parameterType(j));
-            argv[j+1] = m_object->jsonValueToMetaArgs(paramType, params[j], nullptr);
-        }
-
-        qCDebug(lcObject) << "Emitting signal" << name << "with args" << params;
-        QMetaObject::activate(m_object, i, argv.data());
-
-        // Free parameters in argv
-        for (int j = 0; j < method.parameterCount(); j++)
-            QMetaType::destroy(method.parameterType(j), argv[j+1]);
-
-        break;
-    }
-}
