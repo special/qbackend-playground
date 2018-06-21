@@ -1,4 +1,6 @@
 #include "qbackendmodel.h"
+#include "qbackendobject.h"
+#include "qbackendmodel_p.h"
 #include <QQmlEngine>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -7,201 +9,141 @@
 
 Q_LOGGING_CATEGORY(lcModel, "backend.model")
 
-QHash<std::pair<QBackendAbstractConnection*,QString>, std::weak_ptr<QBackendInternalModel>> QBackendInternalModel::m_instances;
+/* Models are QBackendObjects with QAbstractListModel behavior client-side, using an internal object API.
+ * A QBackendModel is a fully functional object and can have user-defined properties, methods, and signals.
+ *
+ * Objects with a '_qb_model' property of type 'object' will construct a QBackendModel. See below for
+ * details on this object.
+ */
 
-class QBackendModelProxy : public QBackendRemoteObject
-{
-public:
-    QBackendModelProxy(QBackendInternalModel *model);
-
-    void objectFound(const QJsonObject& object) override;
-    void methodInvoked(const QString& method, const QJsonArray& params) override;
-
-private:
-    QBackendInternalModel *m_model;
-};
-
-QBackendModel::QBackendModel(QObject *parent)
-    : QSortFilterProxyModel(parent)
+QBackendModel::QBackendModel(QBackendAbstractConnection *connection, QByteArray identifier, const QJsonObject &type, QObject *parent)
+    : QAbstractListModel(parent)
+    , d(new BackendModelPrivate(this, connection, identifier))
+    , m_metaObject(d->metaObjectFromType(type, &QAbstractListModel::staticMetaObject))
 {
 }
 
 QBackendModel::~QBackendModel()
 {
+    d->deleteLater();
+    free(m_metaObject);
 }
 
-QByteArray QBackendModel::identifier() const
+const QMetaObject *QBackendModel::metaObject() const
 {
-    return m_identifier;
+    Q_ASSERT(m_metaObject);
+    return m_metaObject;
 }
 
-void QBackendModel::setIdentifier(const QByteArray& identifier)
+int QBackendModel::qt_metacall(QMetaObject::Call c, int id, void **argv)
 {
-    if (m_identifier == identifier)
+    id = QAbstractListModel::qt_metacall(c, id, argv);
+    if (id < 0)
+        return id;
+    return d->metacall(c, id, argv);
+}
+
+/* The _qb_model object must implement:
+ *
+ * {
+ *   "properties": {
+ *     "roleNames": "var" // string list
+ *   },
+ *   "methods": {
+ *     "reset": []
+ *   },
+ *   "signals": {
+ *     "modelReset": [ "var rowData" ],
+ *     "modelInsert": [ "int start", "var rowData" ],
+ *     "modelRemove": [ "int start", "int end" ],
+ *     "modelMove": [ "int start", "int end", "int destination" ],
+ *     "modelUpdate": [ "int row", "var rowData" ]
+ *   }
+ * }
+ *
+ */
+
+void BackendModelPrivate::ensureModel()
+{
+    if (m_modelData)
         return;
 
-    m_identifier = identifier;
-    subscribeIfReady();
-    emit identifierChanged();
-}
-
-QStringList QBackendModel::roles() const
-{
-    return m_roleNames;
-}
-
-void QBackendModel::setRoles(const QStringList &roleNames)
-{
-    if (m_roleNames == roleNames)
+    m_modelData = m_object->property("_qb_model").value<QBackendObject*>();
+    if (!m_modelData) {
+        qCWarning(lcModel) << "Missing _qb_model object on model type" << m_object->metaObject()->className();
         return;
+    }
+    m_modelData->setParent(this);
 
-    m_roleNames = roleNames;
-    subscribeIfReady();
-    emit roleNamesChanged();
-}
-
-QBackendAbstractConnection* QBackendModel::connection() const
-{
-    return m_connection;
-}
-
-void QBackendModel::setConnection(QBackendAbstractConnection* connection)
-{
-    if (m_connection == connection)
+    m_roleNames = m_modelData->property("roleNames").value<QStringList>();
+    if (m_roleNames.isEmpty()) {
+        qCWarning(lcModel) << "Model type" << m_object->metaObject()->className() << "has no role names";
         return;
-
-    m_connection = connection;
-    subscribeIfReady();
-    emit connectionChanged();
-}
-
-void QBackendModel::invokeMethod(const QString& method, const QJSValue& data)
-{
-#if 0
-    QJSEngine *engine = qmlEngine(this);
-    QJSValue global = engine->globalObject();
-    QJSValue json = global.property("JSON");
-    QJSValue stringify = json.property("stringify");
-    QJSValue jsonData = stringify.call(QList<QJSValue>() << data);
-    m_connection->invokeMethod(m_identifier, method, jsonData.toString().toUtf8());
-#endif
-}
-
-void QBackendModel::subscribeIfReady()
-{
-    if (m_model) {
-        setSourceModel(nullptr);
-        m_model.reset();
     }
 
-    if (!m_connection || m_identifier.isEmpty() || m_roleNames.isEmpty())
-        return;
+    connect(m_modelData, SIGNAL(modelReset(QVariant)), this, SLOT(doReset(QVariant)));
+    connect(m_modelData, SIGNAL(modelInsert(int,QVariant)), this, SLOT(doInsert(int,QVariant)));
 
-    m_model = QBackendInternalModel::instance(m_connection, m_identifier);
-    m_model->setRoleNames(m_roleNames);
-    setSourceModel(m_model.get());
+    // XXX what if _qb_model changes -- full reset, or panic and error
+    // XXX how is data represented
+    // XXX how is data handled w/o a change signal and sending the whole thing every time, given object API
+    //
+    // One option is to not put model data in properties; instead, it could be sent in via signals. reset with
+    // all, etc. Yes, that seems reasonable.
 }
 
-std::shared_ptr<QBackendInternalModel> QBackendInternalModel::instance(QBackendAbstractConnection *connection, QByteArray identifier)
+QHash<int, QByteArray> QBackendModel::roleNames() const
 {
-    auto key = std::make_pair(connection, identifier);
-    auto model = m_instances.value(key).lock();
-    if (!model) {
-        model = std::shared_ptr<QBackendInternalModel>(new QBackendInternalModel(connection, identifier));
-        m_instances.insert(key, model);
-    }
-    return model;
+    const_cast<QBackendModel*>(this)->d->ensureModel();
+    QHash<int,QByteArray> roles;
+    for (const QString &name : d->m_roleNames)
+        roles[Qt::UserRole + roles.size()] = name.toUtf8();
+    return roles;
 }
 
-QBackendInternalModel::QBackendInternalModel(QBackendAbstractConnection *connection, QByteArray identifier)
-    : m_identifier(identifier)
-    , m_connection(connection)
+int QBackendModel::rowCount(const QModelIndex&) const
 {
-    m_proxy = new QBackendModelProxy(this);
-    m_connection->subscribe(m_identifier, m_proxy);
+    const_cast<QBackendModel*>(this)->d->ensureModel();
+    return d->m_rowData.size();
 }
 
-QBackendInternalModel::~QBackendInternalModel()
+QVariant QBackendModel::data(const QModelIndex &index, int role) const
 {
-    if (m_connection && m_proxy)
-        m_connection->unsubscribe(m_identifier, m_proxy);
-    if (m_proxy)
-        m_proxy->deleteLater();
-}
-
-QHash<int, QByteArray> QBackendInternalModel::roleNames() const
-{
-    return m_roleNames;
-}
-
-int QBackendInternalModel::rowCount(const QModelIndex&) const
-{
-    return m_data.size();
-}
-
-QVariant QBackendInternalModel::data(const QModelIndex &index, int role) const
-{
-    if (index.row() < 0 || index.row() >= m_data.size())
+    const_cast<QBackendModel*>(this)->d->ensureModel();
+    if (index.row() < 0 || index.row() >= d->m_rowData.size())
         return QVariant();
 
-    QByteArray roleName = m_roleNames.value(role);
-    if (roleName.isEmpty())
+    const QVariantList &row = d->m_rowData[index.row()];
+    if (role < Qt::UserRole || (role - Qt::UserRole) > row.size())
         return QVariant();
 
-    return m_data[index.row()][roleName];
+    return row[role - Qt::UserRole];
 }
 
-// XXX This is extremely sensitive to the set of roles used for different instances of the model;
-// any difference is likely to lead to brokenness. Should get these from backend instead?
-void QBackendInternalModel::setRoleNames(QStringList names)
+void BackendModelPrivate::doReset(const QVariant &data)
 {
-    // Sort names for stable role order between instances of the same model
-    names.sort();
+    model()->beginResetModel();
+    m_rowData.clear();
 
-    // ### should validate that the backend knows about these roles
-    for (const QString& role : names) {
-        bool found = false;
-        for (const auto &r : m_roleNames) {
-            if (r == role) {
-                found = true;
-                break;
-            }
+    QVariantList rows = data.toList();
+    m_rowData.reserve(rows.size());
+    for (const QVariant &row : rows) {
+        QVariantList rowData = row.toList();
+        if (rowData.size() != m_roleNames.size()) {
+            qCWarning(lcModel) << "Model row" << m_rowData.size() << "has" << rowData.size() << "fields but model expects" << m_roleNames.size();
         }
-
-        if (!found)
-            m_roleNames[Qt::UserRole + m_roleNames.count()] = role.toUtf8();
+        m_rowData.append(rowData);
     }
+
+    model()->endResetModel();
 }
 
-static QMap<QByteArray, QVariant> rowDataFromJson(const QJsonObject &row)
+void BackendModelPrivate::doInsert(int start, const QVariant &data)
 {
-    QMap<QByteArray, QVariant> objectData;
-    for (auto propit = row.constBegin(); propit != row.constEnd(); propit++) {
-        objectData[propit.key().toUtf8()] = propit.value().toVariant();
-    }
-    return objectData;
+    // TODO
 }
 
-void QBackendInternalModel::doReset(const QJsonObject &dataObject)
-{
-    qCDebug(lcModel) << "Resetting" << m_identifier;
-    emit beginResetModel();
-    m_data.clear();
-
-    QJsonArray rows = dataObject.value("data").toArray();
-    if (rows.size() == 0)
-        qCDebug(lcModel) << "Empty data object";
-
-    m_data.reserve(rows.size());
-    for (auto rowit = rows.constBegin(); rowit != rows.constEnd(); rowit++) {
-        Q_ASSERT(rowit->isObject());
-        QJsonObject row = rowit->toObject();
-        m_data.append(rowDataFromJson(row));
-    }
-
-    emit endResetModel();
-}
-
+#if 0
 void QBackendInternalModel::doInsert(int start, const QJsonArray &rows)
 {
     beginInsertRows(QModelIndex(), start, start + rows.count() - 1);
@@ -244,19 +186,8 @@ void QBackendInternalModel::doUpdate(int row, const QJsonObject &data)
     m_data[row] = rowDataFromJson(data);
     emit dataChanged(index(row), index(row));
 }
+#endif
 
-QBackendModelProxy::QBackendModelProxy(QBackendInternalModel *model)
-    : m_model(model)
-{
-}
-
-void QBackendModelProxy::objectFound(const QJsonObject& object)
-{
-    m_model->doReset(object);
-}
-
-void QBackendModelProxy::methodInvoked(const QString& method, const QJsonArray& params)
-{
 #if 0
     QJsonObject args = params.toObject();
 
@@ -289,4 +220,3 @@ void QBackendModelProxy::methodInvoked(const QString& method, const QJsonArray& 
         qCWarning(lcModel) << "unknown method" << method << "invoked";
     }
 #endif
-}

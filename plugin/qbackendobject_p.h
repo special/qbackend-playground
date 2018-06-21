@@ -8,6 +8,8 @@
 
 class BackendObjectPrivate : public QBackendRemoteObject
 {
+    Q_OBJECT
+
 public:
     QObject *m_object = nullptr;
 
@@ -26,7 +28,7 @@ public:
 
     int metacall(QMetaObject::Call c, int id, void **argv);
 
-    QMetaObject *metaObjectFromType(const QJsonObject &type);
+    QMetaObject *metaObjectFromType(const QJsonObject &type, const QMetaObject *superClass = nullptr);
     std::pair<QString,QString> qtTypesFromType(const QString &type);
     void *jsonValueToMetaArgs(QMetaType::Type type, const QJsonValue &value, void *p = nullptr);
 };

@@ -13,6 +13,6 @@ void QBackendPlugin::registerTypes(const char *uri)
     qmlRegisterType<QBackendProcess>(uri, 1, 0, "BackendProcess");
     qmlRegisterType<QBackendJsonListModel>(uri, 1, 0, "BackendJsonListModel");
     qRegisterMetaType<QBackendObject*>();
-    qmlRegisterType<QBackendModel>(uri, 1, 0, "BackendModel");
+    qRegisterMetaType<QBackendModel*>();
 }
 

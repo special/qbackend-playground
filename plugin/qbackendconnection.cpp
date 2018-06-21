@@ -8,6 +8,7 @@
 
 #include "qbackendconnection.h"
 #include "qbackendobject.h"
+#include "qbackendmodel.h"
 
 // #define PROTO_DEBUG
 
@@ -326,22 +327,27 @@ void QBackendConnection::unsubscribe(const QByteArray& identifier, QBackendRemot
     write(QJsonObject{{"command", "UNSUBSCRIBE"}, {"identifier", QString::fromUtf8(identifier)}});
 }
 
-QBackendObject *QBackendConnection::object(const QByteArray &identifier) const
+QObject *QBackendConnection::object(const QByteArray &identifier) const
 {
     return m_objects.value(identifier);
 }
 
 // Create or return the backend object described by `object`, which is in the
 // "_qbackend_": "object" format described in qbackendobject.cpp.
-QBackendObject *QBackendConnection::ensureObject(const QJsonObject &data)
+QObject *QBackendConnection::ensureObject(const QJsonObject &data)
 {
     QByteArray identifier = data.value("identifier").toString().toUtf8();
     if (identifier.isEmpty())
         return nullptr;
 
-    QPointer<QBackendObject> object = m_objects.value(identifier);
+    QPointer<QObject> object = m_objects.value(identifier);
     if (!object) {
-        object = new QBackendObject(this, identifier, data.value("type").toObject());
+        QJsonObject type = data.value("type").toObject();
+        if (!type.value("properties").toObject().value("_qb_model").isUndefined())
+            object = new QBackendModel(this, identifier, type);
+        else
+            object = new QBackendObject(this, identifier, type);
+
         m_objects.insert(identifier, object);
         QQmlEngine::setContextForObject(object, qmlContext(this));
         // This should be the result of the heuristic, but I never trust it.

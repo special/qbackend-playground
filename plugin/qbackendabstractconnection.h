@@ -30,8 +30,8 @@ public:
 
 public:
     virtual QBackendObject *rootObject() const = 0;
-    virtual QBackendObject *object(const QByteArray &identifier) const = 0;
-    virtual QBackendObject *ensureObject(const QJsonObject &object) = 0;
+    virtual QObject *object(const QByteArray &identifier) const = 0;
+    virtual QObject *ensureObject(const QJsonObject &object) = 0;
     virtual void subscribe(const QByteArray& identifier, QBackendRemoteObject* object) = 0;
     virtual void subscribeSync(const QByteArray& identifier, QBackendRemoteObject* object) = 0;
     virtual void unsubscribe(const QByteArray& identifier, QBackendRemoteObject* object) = 0;

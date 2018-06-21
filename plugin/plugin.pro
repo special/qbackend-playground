@@ -27,4 +27,6 @@ HEADERS += \
     qbackendjsonlistmodel.h \
     qbackendabstractconnection.h \
     qbackendobject.h \
-    qbackendmodel.h
+    qbackendobject_p.h \
+    qbackendmodel.h \
+    qbackendmodel_p.h

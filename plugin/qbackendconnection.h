@@ -26,8 +26,8 @@ public:
 
     QBackendObject *rootObject() const;
 
-    Q_INVOKABLE QBackendObject *object(const QByteArray &identifier) const;
-    QBackendObject *ensureObject(const QJsonObject &object);
+    Q_INVOKABLE QObject *object(const QByteArray &identifier) const;
+    QObject *ensureObject(const QJsonObject &object);
 
     void invokeMethod(const QByteArray& identifier, const QString& method, const QJsonArray& params) override;
     void subscribe(const QByteArray& identifier, QBackendRemoteObject* object) override;
@@ -58,7 +58,7 @@ private:
     QJsonObject m_syncResult;
 
     QMultiHash<QByteArray, QBackendRemoteObject*> m_subscribedObjects;
-    QHash<QByteArray, QPointer<QBackendObject>> m_objects;
+    QHash<QByteArray, QPointer<QObject>> m_objects;
     QBackendObject *m_rootObject = nullptr;
 };
 

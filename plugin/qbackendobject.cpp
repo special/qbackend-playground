@@ -209,17 +209,19 @@ void *BackendObjectPrivate::jsonValueToMetaArgs(QMetaType::Type type, const QJso
         p = copyMetaArg(type, p, value.toVariant());
         break;
 
-    default:
-        if (type == QMetaType::type("QBackendObject*")) {
-            QBackendObject *v = m_connection->ensureObject(value.toObject());
+    case QMetaType::QObjectStar:
+        {
+            QObject *v = m_connection->ensureObject(value.toObject());
             if (!p)
                 p = QMetaType::create(type, reinterpret_cast<void*>(&v));
             else
-                *reinterpret_cast<QBackendObject**>(p) = v;
-        } else {
-            // XXX May be possible to do some QVariant conversion here?
-            qCWarning(lcObject) << "Unknown type" << QMetaType::typeName(type) << "in JSON value conversion";
+                *reinterpret_cast<QObject**>(p) = v;
         }
+        break;
+
+    default:
+        // XXX May be possible to do some QVariant conversion here?
+        qCWarning(lcObject) << "Unknown type" << QMetaType::typeName(type) << "in JSON value conversion";
         break;
     }
 
@@ -268,10 +270,12 @@ void *BackendObjectPrivate::jsonValueToMetaArgs(QMetaType::Type type, const QJso
  */
 
 // XXX error handling
-QMetaObject *BackendObjectPrivate::metaObjectFromType(const QJsonObject &type)
+QMetaObject *BackendObjectPrivate::metaObjectFromType(const QJsonObject &type, const QMetaObject *superClass)
 {
     QMetaObjectBuilder b;
     b.setClassName(type.value("name").toString().toUtf8());
+    if (superClass)
+        b.setSuperClass(superClass);
 
     qCDebug(lcObject) << "Building metaobject for type:" << type;
 
@@ -338,7 +342,7 @@ std::pair<QString,QString> BackendObjectPrivate::qtTypesFromType(const QString &
     else if (type == "var")
         return {"QVariant","var"};
     else if (type == "object")
-        return {"QBackendObject*","BackendObject"};
+        return {"QObject*","var"};
     else
         return {"QVariant","var"};
 }
