@@ -24,12 +24,8 @@ type Connection interface {
 	// more control over concurrency.
 	ProcessSignal() <-chan struct{}
 
-	RootObject() *Store
-	SetRootObject(object interface{})
+	RootObject() QObject
+	SetRootObject(object QObject)
 
-	NewStore(name string, data interface{}) (*Store, error)
-	Store(name string) *Store
-
-	storeUpdated(store *Store) error
-	storeEmit(store *Store, method string, data interface{}) error
+	Object(identifier string) QObject
 }

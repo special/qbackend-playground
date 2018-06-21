@@ -3,7 +3,6 @@ package qbackend
 import (
 	"bufio"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -15,8 +14,8 @@ import (
 type ProcessConnection struct {
 	in         io.ReadCloser
 	out        io.WriteCloser
-	store      map[string]*Store
-	rootObject *Store
+	objects    map[string]QObject
+	rootObject QObject
 
 	processSignal chan struct{}
 	queue         chan []byte
@@ -26,7 +25,7 @@ func NewProcessConnection(in io.ReadCloser, out io.WriteCloser) *ProcessConnecti
 	c := &ProcessConnection{
 		in:            in,
 		out:           out,
-		store:         make(map[string]*Store),
+		objects:       make(map[string]QObject),
 		processSignal: make(chan struct{}, 2),
 		queue:         make(chan []byte, 128),
 	}
@@ -68,22 +67,30 @@ func (c *ProcessConnection) handle() {
 	}{cmdMessage{"VERSION"}, 2})
 
 	// Send ROOT
-	if c.rootObject == nil {
-		panic("no root object for active connection")
-	}
-	c.rootObject.numSubscribed++
+	{
+		if c.rootObject == nil {
+			panic("no root object for active connection")
+		}
+		objectImplFor(c.rootObject).Ref = true
 
-	c.sendMessage(struct {
-		cmdMessage
-		Identifier string          `json:"identifier"`
-		Type       typeDescription `json:"type"`
-		Data       interface{}     `json:"data"`
-	}{
-		cmdMessage{"ROOT"},
-		"root",
-		c.rootObject.Type(),
-		c.rootObject.Value(),
-	})
+		data, err := c.rootObject.MarshalObject()
+		if err != nil {
+			// XXX handle errors..
+			panic("root object marshal failed")
+		}
+
+		c.sendMessage(struct {
+			cmdMessage
+			Identifier string      `json:"identifier"`
+			Type       *typeInfo   `json:"type"`
+			Data       interface{} `json:"data"`
+		}{
+			cmdMessage{"ROOT"},
+			"root",
+			objectImplFor(c.rootObject).Type,
+			data,
+		})
+	}
 
 	rd := bufio.NewReader(c.in)
 	for {
@@ -146,26 +153,24 @@ func (c *ProcessConnection) Process() error {
 
 		switch msg["command"] {
 		case "SUBSCRIBE":
-			if store, exists := c.store[msg["identifier"].(string)]; exists {
-				store.numSubscribed++
-				if store.numSubscribed < 2 {
-					c.storeUpdated(store)
-				}
+			if obj, exists := c.objects[msg["identifier"].(string)]; exists {
+				// XXX Really need to change these bits of the protocol
+				objectImplFor(obj).Ref = true
+				c.sendUpdate(obj)
 			} else {
 				// Ignored; store does not exist
 			}
 
 		case "UNSUBSCRIBE":
-			if store, exists := c.store[msg["identifier"].(string)]; exists {
-				if store.numSubscribed > 0 {
-					store.numSubscribed--
-				}
+			if obj, exists := c.objects[msg["identifier"].(string)]; exists {
+				// XXX Not bothering to refcount anymore, protocol needs fixing
+				objectImplFor(obj).Ref = false
 			}
 
 		case "INVOKE":
-			store, exists := c.store[msg["identifier"].(string)]
+			obj, exists := c.objects[msg["identifier"].(string)]
 			if !exists {
-				// Ignored; store does not exist
+				// Ignored; object does not exist
 				continue
 			}
 
@@ -175,7 +180,7 @@ func (c *ProcessConnection) Process() error {
 				continue
 			}
 
-			if err := store.Invoke(msg["method"].(string), params); err != nil {
+			if err := obj.Invoke(msg["method"].(string), params...); err != nil {
 				// Invoke failed
 				continue
 			}
@@ -192,52 +197,68 @@ func (c *ProcessConnection) ProcessSignal() <-chan struct{} {
 	return c.processSignal
 }
 
-func (c *ProcessConnection) RootObject() *Store {
+func (c *ProcessConnection) RootObject() QObject {
 	return c.rootObject
 }
 
-func (c *ProcessConnection) SetRootObject(obj interface{}) {
+func (c *ProcessConnection) SetRootObject(obj QObject) {
 	if c.rootObject != nil {
 		// XXX this is a little rude, maybe
 		panic("cannot reset root object on connection")
 	}
-
-	c.rootObject, _ = c.NewStore("root", obj)
+	c.rootObject = obj
+	if _, err := initObjectId(obj, c, "root"); err != nil {
+		// XXX sigh
+		panic("initializing root object failed")
+	}
 }
 
-func (c *ProcessConnection) NewStore(name string, data interface{}) (*Store, error) {
-	if c.store[name] != nil {
-		return nil, errors.New("store name already defined")
+func (c *ProcessConnection) addObject(obj QObject) {
+	id := obj.Identifier()
+	if eObj, exists := c.objects[id]; exists {
+		if obj == eObj {
+			return
+		} else {
+			// XXX more panic
+			panic("Connection has a different object registered with id")
+		}
 	}
 
-	val := &Store{
-		Connection: c,
-		Name:       name,
-		Data:       data,
+	c.objects[id] = obj
+}
+
+func (c *ProcessConnection) Object(name string) QObject {
+	return c.objects[name]
+}
+
+func (c *ProcessConnection) sendUpdate(obj QObject) error {
+	if !obj.Referenced() {
+		return nil
 	}
-	c.store[name] = val
-	return val, nil
-}
 
-func (c *ProcessConnection) Store(name string) *Store {
-	return c.store[name]
-}
+	data, err := obj.MarshalObject()
+	if err != nil {
+		return err
+	}
 
-func (c *ProcessConnection) storeUpdated(store *Store) error {
 	c.sendMessage(struct {
 		cmdMessage
-		Identifier string      `json:"identifier"`
-		Data       interface{} `json:"data"`
-	}{cmdMessage{"OBJECT_CREATE"}, store.Name, store.Value()})
+		Identifier string                 `json:"identifier"`
+		Data       map[string]interface{} `json:"data"`
+	}{
+		cmdMessage{"OBJECT_CREATE"},
+		obj.Identifier(),
+		data,
+	})
 	return nil
 }
 
-func (c *ProcessConnection) storeEmit(store *Store, method string, data interface{}) error {
+func (c *ProcessConnection) sendEmit(obj QObject, method string, data []interface{}) error {
 	c.sendMessage(struct {
 		cmdMessage
-		Identifier string      `json:"identifier"`
-		Method     string      `json:"method"`
-		Parameters interface{} `json:"parameters"`
-	}{cmdMessage{"EMIT"}, store.Name, method, data})
+		Identifier string        `json:"identifier"`
+		Method     string        `json:"method"`
+		Parameters []interface{} `json:"parameters"`
+	}{cmdMessage{"EMIT"}, obj.Identifier(), method, data})
 	return nil
 }

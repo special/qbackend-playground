@@ -7,8 +7,7 @@ import (
 )
 
 type Person struct {
-	Store *qbackend.Store `json:"-"`
-
+	qbackend.QObject
 	FirstName string `json:"firstName"`
 	LastName  string `json:"lastName"`
 	Age       int    `json:"age"`
@@ -17,16 +16,15 @@ type Person struct {
 func (p *Person) BeOlder(years int) {
 	p.Age += years
 	// XXX store updated
-	// XXX this bidirectional reference thing is annoying. Something that indexed
-	// by ptr would be neat, maybe?
-	p.Store.Updated()
+	//p.Store.Updated()
 }
 
 type generalData struct {
+	qbackend.QObject
 	TestData    string          `json:"testData"`
 	TotalPeople int             `json:"totalPeople"`
-	MainPerson  *qbackend.Store `json:"mainPerson"`
-	PeopleModel *qbackend.Store `json:"peopleModel"`
+	MainPerson  *Person         `json:"mainPerson"`
+	PeopleModel *qbackend.Model `json:"peopleModel"`
 }
 
 type PersonModel struct {
@@ -54,9 +52,7 @@ func main() {
 	qb := qbackend.NewStdConnection()
 
 	mainPerson := &Person{FirstName: "Robin", LastName: "Burchell", Age: 31}
-	mainPerson.Store, _ = qb.NewStore("thatguy", mainPerson)
-
-	gd := &generalData{TestData: "Now connected", TotalPeople: 666, MainPerson: mainPerson.Store}
+	gd := &generalData{TestData: "Now connected", TotalPeople: 666, MainPerson: mainPerson}
 	qb.SetRootObject(gd)
 
 	pm := &PersonModel{
@@ -65,8 +61,7 @@ func main() {
 			Person{FirstName: "Kamilla", LastName: "Bremeraunet", Age: 30},
 		},
 	}
-	model := qbackend.NewModel(pm, qb)
-	gd.PeopleModel = model.Store
+	gd.PeopleModel = qbackend.NewModel(pm, qb)
 
 	qb.Run()
 	fmt.Printf("Quitting?\n")

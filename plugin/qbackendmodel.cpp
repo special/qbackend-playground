@@ -84,7 +84,7 @@ void BackendModelPrivate::ensureModel()
     connect(m_modelData, SIGNAL(modelReset(QVariant)), this, SLOT(doReset(QVariant)));
     connect(m_modelData, SIGNAL(modelInsert(int,QVariant)), this, SLOT(doInsert(int,QVariant)));
 
-    QMetaObject::invokeMethod(m_modelData, "Reset");
+    QMetaObject::invokeMethod(m_modelData, "reset");
 
     // XXX what if _qb_model changes -- full reset, or panic and error
     // XXX how is data represented
