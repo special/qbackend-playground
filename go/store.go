@@ -180,6 +180,7 @@ func (s *Store) Type() typeDescription {
 
 		// Signals are represented by func properties, with a qbackend tag
 		// giving a name for each parameter, which is required for QML.
+		// XXX Ugh, JSON fails on funcs. Might have to move past direct JSON for encoding..
 		if field.Type.Kind() == reflect.Func {
 			paramNames := strings.Split(field.Tag.Get("qbackend"), ",")
 			if field.Type.NumIn() > 0 && len(paramNames) != field.Type.NumIn() {
@@ -354,7 +355,7 @@ func (s *Store) MarshalJSON() ([]byte, error) {
 		"object",
 		s.Name,
 		s.Type(),
-		s.Data,
+		s.Value(),
 	}
 	return json.Marshal(obj)
 }

@@ -5,21 +5,59 @@ type RowGetter interface {
 	Rows() []interface{}
 }
 
+// modelAPI implements the internal qbackend API for model data; see QBackendModel from the plugin
+type modelAPI struct {
+	Model     *Model   `json:"-"`
+	RoleNames []string `json:"roleNames"`
+
+	// Signals
+	ModelReset  func(interface{})      `qbackend:"rowData" json:"-"`
+	ModelInsert func(int, interface{}) `qbackend:"start,rowData" json:"-"`
+	ModelRemove func(int, int)         `qbackend:"start,end" json:"-"`
+	ModelMove   func(int, int, int)    `qbackend:"start,end,destination" json:"-"`
+	ModelUpdate func(int, interface{}) `qbackend:"row,data" json:"-"`
+}
+
+func (m *modelAPI) Reset() {
+	m.Model.Reset()
+}
+
 type Model struct {
 	Rows  RowGetter
 	Store *Store
+
+	api      *modelAPI
+	apiStore *Store
+}
+
+func NewModel(rows RowGetter, c Connection) *Model {
+	m := &Model{
+		Rows: rows,
+		api:  new(modelAPI),
+	}
+
+	// XXX Figure out some reasonable behavior for RoleNames
+	m.api.Model = m
+	m.api.RoleNames = []string{"firstName", "lastName", "age"}
+
+	// XXX Identifier API still needs fixing..
+	m.Store, _ = c.NewStore("XXXmodelXXX", m)
+	m.apiStore, _ = c.NewStore("XXXmodelDataXXX", m.api)
+
+	return m
 }
 
 func (m *Model) Data() interface{} {
 	return struct {
-		Data interface{} `json:"data"`
-	}{m.Rows.Rows()}
+		API *Store `json:"_qb_model"`
+	}{m.apiStore}
 }
 
 func (m *Model) Reset() {
-	m.Store.Emit("reset", m.Data())
+	m.apiStore.Emit("modelReset", []interface{}{m.Rows.Rows()})
 }
 
+// XXX None of the rest of these are (re-)implemented properly yet
 func (m *Model) Inserted(start, count int) {
 	rows := make([]interface{}, count)
 	for i := 0; i < count; i++ {

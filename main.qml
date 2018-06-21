@@ -15,17 +15,12 @@ Item {
         args: [ "run", "test.go" ]
     }
 
-    /*ListView {
+    ListView {
         id: myView
         width: parent.width
         anchors.top: headerRow.bottom
         anchors.bottom: bottomRow.top
-        model: BackendJsonListModel {
-            id: myData
-            connection: backendProcess
-            identifier: "PersonModel"
-            roles: [ "firstName", "lastName", "age" ]
-        }
+        model: dataObject ?  dataObject.peopleModel : null
         delegate: Item {
             height: col.height
             width: ListView.view.width
@@ -92,7 +87,7 @@ Item {
                 }
             }
         }
-    }*/
+    }
 
     Row {
         id: headerRow
@@ -137,18 +132,18 @@ Item {
         }
     }
 
-    /*Row {
+    Row {
         id: bottomRow
         anchors.bottom: parent.bottom
         width: parent.width
 
-        Button {
+        /*Button {
             height: childrenRect.height * 1.5
             width: parent.width
             text: "Add"
             onClicked: {
                 myData.invokeMethod("addNew", [])
             }
-        }
-    }*/
+        }*/
+    }
 }

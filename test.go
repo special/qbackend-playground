@@ -26,16 +26,29 @@ type generalData struct {
 	TestData    string          `json:"testData"`
 	TotalPeople int             `json:"totalPeople"`
 	MainPerson  *qbackend.Store `json:"mainPerson"`
+	PeopleModel *qbackend.Store `json:"peopleModel"`
 }
 
-// PersonModel wraps a DataModel to add additional invokable methods
-/*type PersonModel struct {
-	qbackend.DataModel
+type PersonModel struct {
+	People []Person
 }
 
-func (pm *PersonModel) AddNew() {
-	pm.Add(Person{FirstName: "Another", LastName: "Person", Age: 15 + pm.Count()})
-}*/
+func (pm *PersonModel) Row(row int) interface{} {
+	if row < 0 || row >= len(pm.People) {
+		return nil
+	}
+	r := pm.People[row]
+	return []interface{}{r.FirstName, r.LastName, r.Age}
+}
+
+func (pm *PersonModel) Rows() []interface{} {
+	re := make([]interface{}, len(pm.People))
+	for i := 0; i < len(pm.People); i++ {
+		r := pm.People[i]
+		re[i] = []interface{}{r.FirstName, r.LastName, r.Age}
+	}
+	return re
+}
 
 func main() {
 	qb := qbackend.NewStdConnection()
@@ -43,29 +56,17 @@ func main() {
 	mainPerson := &Person{FirstName: "Robin", LastName: "Burchell", Age: 31}
 	mainPerson.Store, _ = qb.NewStore("thatguy", mainPerson)
 
-	qb.SetRootObject(&generalData{TestData: "Now connected", TotalPeople: 666, MainPerson: mainPerson.Store})
+	gd := &generalData{TestData: "Now connected", TotalPeople: 666, MainPerson: mainPerson.Store}
+	qb.SetRootObject(gd)
 
-	//gd := &generalData{TestData: "Now connected", TotalPeople: 666}
-	///*gds, _ :=*/ qb.NewStore("GeneralData", gd)
-
-	/*pm := &PersonModel{}
-	pm.SetHook = func(uuid uuid.UUID, value interface{}) bool {
-		_, existed := pm.Get(uuid)
-		if !existed {
-			gd.TotalPeople++
-			gds.Updated()
-		}
-		return true
+	pm := &PersonModel{
+		People: []Person{
+			Person{FirstName: "Robin", LastName: "Burchell", Age: 31},
+			Person{FirstName: "Kamilla", LastName: "Bremeraunet", Age: 30},
+		},
 	}
-	pm.RemoveHook = func(uuid uuid.UUID) bool {
-		gd.TotalPeople--
-		gds.Updated()
-		return true
-	}
-	pm.Store, _ = qb.NewStore("PersonModel", pm)
-
-	pm.Add(Person{FirstName: "Robin", LastName: "Burchell", Age: 31})
-	pm.Add(Person{FirstName: "Kamilla", LastName: "Bremeraunet", Age: 30})*/
+	model := qbackend.NewModel(pm, qb)
+	gd.PeopleModel = model.Store
 
 	qb.Run()
 	fmt.Printf("Quitting?\n")
