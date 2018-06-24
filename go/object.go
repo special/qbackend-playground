@@ -254,6 +254,9 @@ func (o *objectImpl) Invoke(methodName string, inArgs ...interface{}) error {
 }
 
 func (o *objectImpl) Emit(signal string, args ...interface{}) {
+	if !o.Referenced() {
+		return
+	}
 	o.C.(*ProcessConnection).sendEmit(o.Object.(QObject), signal, args)
 }
 
