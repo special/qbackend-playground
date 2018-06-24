@@ -2,8 +2,13 @@ package qbackend
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
+	"os"
 	"testing"
 )
+
+var dummyConnection *ProcessConnection
 
 type BasicStruct struct {
 	StringData string
@@ -17,14 +22,21 @@ type BasicQObject struct {
 	Child      *BasicQObject
 }
 
+func TestMain(m *testing.M) {
+	r1, _ := io.Pipe()
+	_, w2 := io.Pipe()
+	dummyConnection = NewProcessConnection(r1, w2)
+
+	os.Exit(m.Run())
+}
+
 func TestQObjectInit(t *testing.T) {
 	q := &BasicQObject{}
 	if isQObject, _ := QObjectFor(q); !isQObject {
 		t.Error("QObject struct not detected as QObject")
 	}
 
-	// XXX Use a mock connection; nil will eventually fail
-	if _, err := initObject(q, nil); err != nil {
+	if err := dummyConnection.InitObject(q); err != nil {
 		t.Errorf("QObject initialization failed: %s", err)
 	}
 
@@ -48,9 +60,7 @@ func TestMarshal(t *testing.T) {
 		},
 	}
 
-	// XXX Explicitly initializing because there's no root to work with
-	// XXX See above about the Connection
-	if _, err := initObject(q, nil); err != nil {
+	if err := dummyConnection.InitObject(q); err != nil {
 		t.Errorf("QObject initialization failed: %s", err)
 	}
 
@@ -77,7 +87,7 @@ func TestSignals(t *testing.T) {
 	q := &SignalQObject{}
 
 	// Init should assign functions for each signal
-	if _, err := initObject(q, nil); err != nil {
+	if err := dummyConnection.InitObject(q); err != nil {
 		t.Errorf("QObject initialization failed: %s", err)
 	}
 	if q.NoArgs == nil || q.NormalArgs == nil || q.ObjectArgs == nil {
@@ -109,7 +119,7 @@ func (m *MethodQObject) Add(i int) {
 func TestMethods(t *testing.T) {
 	q := &MethodQObject{}
 
-	if _, err := initObject(q, nil); err != nil {
+	if err := dummyConnection.InitObject(q); err != nil {
 		t.Errorf("QObject initialization failed: %s", err)
 	}
 

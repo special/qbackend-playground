@@ -231,6 +231,11 @@ func (c *ProcessConnection) Object(name string) QObject {
 	return c.objects[name]
 }
 
+func (c *ProcessConnection) InitObject(obj QObject) error {
+	_, err := initObject(obj, c)
+	return err
+}
+
 func (c *ProcessConnection) sendUpdate(obj QObject) error {
 	if !obj.Referenced() {
 		return nil

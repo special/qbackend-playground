@@ -28,4 +28,12 @@ type Connection interface {
 	SetRootObject(object QObject)
 
 	Object(identifier string) QObject
+	// Explicitly initialize a QObject, assigning an identifier and signal handlers.
+	//
+	// It's generally not necessary to InitObject manually; objects are initialized as they
+	// are encountered in properties and parameters.
+	//
+	// InitObject can be useful to guarantee that the QObject (and signals) are always
+	// usable.
+	InitObject(object QObject) error
 }
