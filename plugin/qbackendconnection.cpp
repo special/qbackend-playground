@@ -5,6 +5,7 @@
 #include <QLoggingCategory>
 #include <QLocalSocket>
 #include <QQmlEngine>
+#include <QElapsedTimer>
 
 #include "qbackendconnection.h"
 #include "qbackendobject.h"
@@ -104,6 +105,36 @@ void QBackendConnection::setBackendIo(QIODevice *rd, QIODevice *wr)
 
     connect(m_readIo, &QIODevice::readyRead, this, &QBackendConnection::handleDataReady);
     handleDataReady();
+}
+
+void QBackendConnection::classBegin()
+{
+}
+
+void QBackendConnection::componentComplete()
+{
+    if (!m_rootObject && m_readIo && m_readIo->isOpen() && m_writeIo && m_writeIo->isOpen()) {
+        // Block to wait for the connection to complete; this ensures that root is always
+        // available, and avoids a lot of ugly initialization cases for applications.
+        QElapsedTimer tm;
+        qCDebug(lcConnection) << "Blocking component complete until backend connection is established";
+        tm.restart();
+
+        // Flush write buffer before blocking
+        while (m_writeIo->bytesToWrite() > 0) {
+            if (!m_writeIo->waitForBytesWritten(5000))
+                break;
+        }
+
+        handleDataReady();
+        while (!m_rootObject) {
+            if (!m_readIo->waitForReadyRead(5000))
+                break;
+            qCDebug(lcConnection) << "waitForReadyRead returned, root object is now" << m_rootObject;
+        }
+
+        qCDebug(lcConnection) << "Blocked for" << tm.elapsed() << "ms to initialize root object";
+    }
 }
 
 /* I gift to you a brief, possibly accurate protocol description.
@@ -225,7 +256,7 @@ void QBackendConnection::handleMessage(const QByteArray &message) {
             m_objects.insert("root", m_rootObject);
             QQmlEngine::setContextForObject(m_rootObject, qmlContext(this));
             m_rootObject->resetData(cmd.value("data").toObject());
-            emit rootObjectChanged();
+            emit ready();
         } else {
             // XXX assert that type has not changed
             m_rootObject->resetData(cmd.value("data").toObject());

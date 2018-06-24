@@ -125,15 +125,16 @@ int BackendObjectPrivate::metacall(QMetaObject::Call c, int id, void **argv)
     const QMetaObject *metaObject = m_object->metaObject();
 
     if (c == QMetaObject::ReadProperty) {
+        int count = metaObject->propertyCount() - metaObject->propertyOffset();
+        QMetaProperty property = metaObject->property(id + metaObject->propertyOffset());
+
         if (!m_dataReady) {
             // XXX This ends up in objectFound and sends notify signals, which sounds a little
             // dangerous.. I could imagine it creating fake binding loops. They could be deferred
             // I guess?
+            qCDebug(lcObject) << "Blocking to load data for object" << m_identifier << "from read of property" << property.name();
             m_connection->subscribeSync(m_identifier, this);
         }
-
-        int count = metaObject->propertyCount() - metaObject->propertyOffset();
-        QMetaProperty property = metaObject->property(id + metaObject->propertyOffset());
 
         jsonValueToMetaArgs(static_cast<QMetaType::Type>(property.userType()), m_dataObject.value(property.name()), argv[0]);
 

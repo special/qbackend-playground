@@ -12,11 +12,12 @@
 
 class QBackendObject;
 
-class QBackendConnection : public QBackendAbstractConnection
+class QBackendConnection : public QBackendAbstractConnection, public QQmlParserStatus
 {
     Q_OBJECT
+    Q_INTERFACES(QQmlParserStatus)
     Q_PROPERTY(QUrl url READ url WRITE setUrl NOTIFY urlChanged)
-    Q_PROPERTY(QBackendObject* root READ rootObject NOTIFY rootObjectChanged)
+    Q_PROPERTY(QBackendObject* root READ rootObject NOTIFY ready)
 
 public:
     QBackendConnection(QObject *parent = 0);
@@ -36,10 +37,12 @@ public:
 
 signals:
     void urlChanged();
-    void rootObjectChanged();
+    void ready();
 
 protected:
     void setBackendIo(QIODevice *read, QIODevice *write);
+    void classBegin() override;
+    void componentComplete() override;
 
 private slots:
     void handleDataReady();

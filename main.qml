@@ -20,7 +20,7 @@ Item {
         width: parent.width
         anchors.top: headerRow.bottom
         anchors.bottom: bottomRow.top
-        model: dataObject ?  dataObject.peopleModel : null
+        model: dataObject.peopleModel
         delegate: Item {
             height: col.height
             width: ListView.view.width
@@ -100,13 +100,7 @@ Item {
 
             Label {
                 color: "white"
-                text: {
-                    if (dataObject) {
-                        return dataObject.testData + " ; people: " + dataObject.totalPeople
-                    } else {
-                        return "Connecting..."
-                    }
-                }
+                text: dataObject.testData + " ; people: " + dataObject.totalPeople
                 anchors.centerIn: parent
                 font.bold: true
                 font.pixelSize: headerRow.height/2
@@ -121,7 +115,7 @@ Item {
             top: headerRow.bottom
         }
 
-        property var person: dataObject ? dataObject.mainPerson : null
+        property var person: dataObject.mainPerson
         onPersonChanged: console.log("person:", JSON.stringify(person))
         text: !person ? "unknown" : person.lastName + ", " + person.firstName + ": " + person.age + " years old"
         color: "black"
