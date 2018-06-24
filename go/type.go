@@ -97,6 +97,10 @@ func typeFieldName(field reflect.StructField) string {
 	return name
 }
 
+func typeFieldChangedName(fieldName string) string {
+	return fieldName + "Changed"
+}
+
 func typeInfoTypeName(t reflect.Type) string {
 	switch t.Kind() {
 	case reflect.Bool:
@@ -193,6 +197,18 @@ func parseType(t reflect.Type) (*typeInfo, error) {
 		} else {
 			typeInfo.Properties[name] = typeInfoTypeName(field.Type)
 			typeInfo.propertyFieldIndex[name] = i
+		}
+	}
+
+	// Create change signals for all properties, adopting explicit ones if they exist
+	for name, _ := range typeInfo.Properties {
+		signalName := typeFieldChangedName(name)
+		if params, exists := typeInfo.Signals[signalName]; exists {
+			if len(params) > 0 {
+				return nil, fmt.Errorf("Signal '%s' is a property change signal, but has %d parameters. These signals should not have parameters.", signalName, len(params))
+			}
+		} else {
+			typeInfo.Signals[signalName] = []string{}
 		}
 	}
 

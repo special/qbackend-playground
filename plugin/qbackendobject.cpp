@@ -282,10 +282,8 @@ QMetaObject *BackendObjectPrivate::metaObjectFromType(const QJsonObject &type, c
 
     QJsonObject properties = type.value("properties").toObject();
     for (auto it = properties.constBegin(); it != properties.constEnd(); it++) {
-        // XXX readonly: true syntax, notifiers, other things
         qCDebug(lcObject) << " -- property:" << it.key() << it.value().toString();
-        int notifier = b.addSignal(it.key().toUtf8() + "Changed()").index();
-        b.addProperty(it.key().toUtf8(), qtTypesFromType(it.value().toString()).first.toUtf8(), notifier);
+        b.addProperty(it.key().toUtf8(), qtTypesFromType(it.value().toString()).first.toUtf8());
     }
 
     QJsonObject signalsObj = type.value("signals").toObject();
@@ -305,6 +303,15 @@ QMetaObject *BackendObjectPrivate::metaObjectFromType(const QJsonObject &type, c
         QMetaMethodBuilder method = b.addSignal(signature.toUtf8());
         method.setParameterNames(paramNames);
         qCDebug(lcObject) << " -- signal:" << signature << method.index();
+
+        int c = it.key().lastIndexOf("Changed");
+        if (c >= 0) {
+            int propIndex = b.indexOfProperty(it.key().mid(0, c).toUtf8());
+            if (propIndex >= 0) {
+                b.property(propIndex).setNotifySignal(method);
+                qCDebug(lcObject) << " -- -- notifying for property" << propIndex;
+            }
+        }
     }
 
     QJsonObject methods = type.value("methods").toObject();
