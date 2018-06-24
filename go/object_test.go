@@ -116,6 +116,12 @@ func (m *MethodQObject) Add(i int) {
 	m.Count += i
 }
 
+func (m *MethodQObject) Update(obj *BasicQObject) {
+	if obj != nil {
+		obj.StringData = fmt.Sprintf("Count is %d", m.Count)
+	}
+}
+
 func TestMethods(t *testing.T) {
 	q := &MethodQObject{}
 
@@ -126,13 +132,30 @@ func TestMethods(t *testing.T) {
 	ti, _ := json.Marshal(q.QObject.(*objectImpl).Type)
 	t.Logf("Typeinfo: %s", ti)
 
-	err := q.Invoke("Increment")
+	err := q.Invoke("increment")
 	if err != nil || q.Count != 1 {
 		t.Errorf("Invoking 'Increment' failed: %v", err)
 	}
 
-	err = q.Invoke("Add", 4)
+	err = q.Invoke("add", 4)
 	if err != nil || q.Count != 5 {
 		t.Errorf("Invoking 'Add' failed: %v", err)
+	}
+
+	strObj := &BasicQObject{}
+	if err := dummyConnection.InitObject(strObj); err != nil {
+		t.Errorf("Initializing object failed: %v", err)
+	}
+
+	// There's generally no reason to refer objects this way from Go, so
+	// fake the API a little bit.
+	strObjRef := make(map[string]string)
+	strObjRef["_qbackend_"] = "object"
+	strObjRef["identifier"] = strObj.Identifier()
+	if err := q.Invoke("update", strObjRef); err != nil {
+		t.Errorf("Invoking 'Update' failed: %v", err)
+	}
+	if strObj.StringData != "Count is 5" {
+		t.Error("Object passed as parameter was not modified")
 	}
 }

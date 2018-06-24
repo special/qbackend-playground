@@ -202,8 +202,21 @@ func (o *objectImpl) Invoke(methodName string, inArgs ...interface{}) error {
 		inArgValue := reflect.ValueOf(inArg)
 		var callArg reflect.Value
 
-		// Convert types if necessary and possible
-		// TODO: This does not handle QObject types in arguments
+		// Replace references to QObjects with the objects themselves
+		if inArgValue.Kind() == reflect.Map &&
+			inArgValue.Type().Key().Kind() == reflect.String &&
+			inArgValue.MapIndex(reflect.ValueOf("_qbackend_")).String() == "object" {
+			identifier := inArgValue.MapIndex(reflect.ValueOf("identifier"))
+			if identifier.Kind() != reflect.String {
+				return fmt.Errorf("qobject argument %d is malformed; invalid identifier %v", i, identifier)
+			}
+
+			// Will be nil if the object does not exist
+			// Replace the inArgValue so the logic below can handle type matching and conversion
+			inArgValue = reflect.ValueOf(o.C.Object(identifier.String()))
+		}
+
+		// Match types, converting or unmarshaling if possible
 		if inArgValue.Type() == argType {
 			// Types match
 			callArg = inArgValue
