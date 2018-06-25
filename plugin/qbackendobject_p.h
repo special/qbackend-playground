@@ -22,6 +22,7 @@ public:
     BackendObjectPrivate(QObject *object, QBackendAbstractConnection *connection, const QByteArray &identifier);
     virtual ~BackendObjectPrivate();
 
+    QObject *object() const override { return m_object; }
     void objectFound(const QJsonObject& object) override;
     void methodInvoked(const QString& method, const QJsonArray& params) override;
     void resetData(const QJsonObject &data);

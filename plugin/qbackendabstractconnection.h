@@ -12,6 +12,10 @@ class QBackendObject;
 class QBackendRemoteObject : public QObject
 {
 public:
+    QBackendRemoteObject(QObject *parent = nullptr) : QObject(parent) { }
+
+    virtual QObject *object() const = 0;
+
     // Called when an object has been associated with the subscribed identifier
     virtual void objectFound(const QJsonObject& object) = 0;
 
@@ -32,10 +36,11 @@ public:
     virtual QBackendObject *rootObject() const = 0;
     virtual QObject *object(const QByteArray &identifier) const = 0;
     virtual QObject *ensureObject(const QJsonObject &object) = 0;
-    virtual void subscribe(const QByteArray& identifier, QBackendRemoteObject* object) = 0;
-    virtual void subscribeSync(const QByteArray& identifier, QBackendRemoteObject* object) = 0;
-    virtual void unsubscribe(const QByteArray& identifier, QBackendRemoteObject* object) = 0;
-    virtual void invokeMethod(const QByteArray& identifier, const QString& method, const QJsonArray& paramsm) = 0;
+
+    virtual void addObjectProxy(const QByteArray& identifier, QBackendRemoteObject* object) = 0;
+    virtual void removeObject(const QByteArray& identifier) = 0;
+    virtual void resetObjectData(const QByteArray& identifier, bool synchronous = false) = 0;
+    virtual void invokeMethod(const QByteArray& identifier, const QString& method, const QJsonArray& params) = 0;
 };
 
 

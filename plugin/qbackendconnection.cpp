@@ -253,7 +253,6 @@ void QBackendConnection::handleMessage(const QByteArray &message) {
 
         if (!m_rootObject) {
             m_rootObject = new QBackendObject(this, "root", cmd.value("type").toObject(), this);
-            m_objects.insert("root", m_rootObject);
             QQmlEngine::setContextForObject(m_rootObject, qmlContext(this));
             m_rootObject->resetData(cmd.value("data").toObject());
             emit ready();
@@ -263,8 +262,8 @@ void QBackendConnection::handleMessage(const QByteArray &message) {
         }
     } else if (command == "OBJECT_CREATE") {
         QByteArray identifier = cmd.value("identifier").toString().toUtf8();
-
-        for (auto obj : m_subscribedObjects.values(identifier)) {
+        auto obj = m_objects.value(identifier);
+        if (obj) {
             obj->objectFound(cmd.value("data").toObject());
         }
     } else if (command == "EMIT") {
@@ -273,7 +272,8 @@ void QBackendConnection::handleMessage(const QByteArray &message) {
         QJsonArray params = cmd.value("parameters").toArray();
 
         qCDebug(lcConnection) << "Emit " << method << " on " << identifier << params;
-        for (auto obj : m_subscribedObjects.values(identifier)) {
+        auto obj = m_objects.value(identifier);
+        if (obj) {
             obj->methodInvoked(method, params);
         }
     }
@@ -334,33 +334,43 @@ void QBackendConnection::invokeMethod(const QByteArray& identifier, const QStrin
     });
 }
 
-void QBackendConnection::subscribe(const QByteArray& identifier, QBackendRemoteObject* object)
+void QBackendConnection::addObjectProxy(const QByteArray& identifier, QBackendRemoteObject* proxy)
 {
-    qCDebug(lcConnection) << "Creating remote object handler " << identifier << " on connection " << this << " for " << object;
-    m_subscribedObjects.insert(identifier, object);
+    if (m_objects.contains(identifier)) {
+        qCWarning(lcConnection) << "Duplicate object identifiers on connection for objects" << proxy << "and" << m_objects.value(identifier);
+        return;
+    }
+
+    qCDebug(lcConnection) << "Creating remote object handler " << identifier << " on connection " << this << " for " << proxy;
+    m_objects.insert(identifier, proxy);
+}
+
+void QBackendConnection::resetObjectData(const QByteArray& identifier, bool synchronous)
+{
     write(QJsonObject{{"command", "SUBSCRIBE"}, {"identifier", QString::fromUtf8(identifier)}});
+
+    if (synchronous) {
+        waitForMessage([identifier](const QJsonObject &message) -> bool {
+            if (message.value("command").toString() != "OBJECT_CREATE")
+                return false;
+            return message.value("identifier").toString().toUtf8() == identifier;
+        });
+    }
 }
 
-void QBackendConnection::subscribeSync(const QByteArray& identifier, QBackendRemoteObject* object)
+void QBackendConnection::removeObject(const QByteArray& identifier)
 {
-    subscribe(identifier, object);
-    waitForMessage([identifier](const QJsonObject &message) -> bool {
-        if (message.value("command").toString() != "OBJECT_CREATE")
-            return false;
-        return message.value("identifier").toString().toUtf8() == identifier;
-    });
-}
-
-void QBackendConnection::unsubscribe(const QByteArray& identifier, QBackendRemoteObject* object)
-{
-    qCDebug(lcConnection) << "Removing remote object handler " << identifier << " on connection " << this << " for " << object;
-    m_subscribedObjects.remove(identifier, object);
+    qCDebug(lcConnection) << "Removing remote object handler " << identifier << " on connection " << this << " for ";
+    m_objects.remove(identifier);
     write(QJsonObject{{"command", "UNSUBSCRIBE"}, {"identifier", QString::fromUtf8(identifier)}});
 }
 
 QObject *QBackendConnection::object(const QByteArray &identifier) const
 {
-    return m_objects.value(identifier);
+    auto obj = m_objects.value(identifier);
+    if (obj)
+        return obj->object();
+    return nullptr;
 }
 
 // Create or return the backend object described by `object`, which is in the
@@ -371,34 +381,23 @@ QObject *QBackendConnection::ensureObject(const QJsonObject &data)
     if (identifier.isEmpty())
         return nullptr;
 
-    QPointer<QObject> object = m_objects.value(identifier);
-    if (!object) {
+    auto proxyObject = m_objects.value(identifier);
+    if (!proxyObject) {
         QJsonObject type = data.value("type").toObject();
+
+        QObject *object;
         if (!type.value("properties").toObject().value("_qb_model").isUndefined())
             object = new QBackendModel(this, identifier, type);
         else
             object = new QBackendObject(this, identifier, type);
-
-        m_objects.insert(identifier, object);
         QQmlEngine::setContextForObject(object, qmlContext(this));
         // This should be the result of the heuristic, but I never trust it.
         QQmlEngine::setObjectOwnership(object, QQmlEngine::JavaScriptOwnership);
-    } else {
-        // XXX assert that type is the same; it is never allowed to change
+
+        // Object constructor should have registered its proxy
+        proxyObject = m_objects.value(identifier);
+        Q_ASSERT(proxyObject);
     }
 
-    // XXX this is a problem: it's being reset for every property read because the
-    // parent object has data in it. Even if that were fixed, it's broken because
-    // it could race and end up replacing the data with older data.
-    //
-    // One option is to just forbid data, and have it always request separately
-    // and as-needed. That's a little unfortunate, because sometimes you know
-    // that the data in a child object is going to be relevant pretty quick.
-    // Although if that would translate into API is much less clear.
-    //
-    // XXX Ignoring it for now..
-    //if (!data.value("data").isUndefined())
-        //object->doReset(data.value("data").toObject());
-
-    return object;
+    return proxyObject->object();
 }

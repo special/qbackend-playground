@@ -23,8 +23,7 @@ QBackendObject::QBackendObject(QBackendAbstractConnection *connection, QByteArra
 
 QBackendObject::~QBackendObject()
 {
-    d->deleteLater();
-    // XXX clean up proxy, subscription, etc
+    delete d;
     free(m_metaObject);
 }
 
@@ -48,15 +47,17 @@ void QBackendObject::resetData(const QJsonObject &data)
 }
 
 BackendObjectPrivate::BackendObjectPrivate(QObject *object, QBackendAbstractConnection *connection, const QByteArray &identifier)
-    : m_object(object)
+    : QBackendRemoteObject(object)
+    , m_object(object)
     , m_connection(connection)
     , m_identifier(identifier)
 {
+    connection->addObjectProxy(identifier, this);
 }
 
 BackendObjectPrivate::~BackendObjectPrivate()
 {
-    // XXX unsubscribe or whatever else is necessary here
+    m_connection->removeObject(m_identifier);
 }
 
 void BackendObjectPrivate::objectFound(const QJsonObject &object)

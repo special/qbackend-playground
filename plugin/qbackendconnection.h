@@ -31,9 +31,9 @@ public:
     QObject *ensureObject(const QJsonObject &object);
 
     void invokeMethod(const QByteArray& identifier, const QString& method, const QJsonArray& params) override;
-    void subscribe(const QByteArray& identifier, QBackendRemoteObject* object) override;
-    void subscribeSync(const QByteArray& identifier, QBackendRemoteObject* object) override;
-    void unsubscribe(const QByteArray& identifier, QBackendRemoteObject* object) override;
+    void addObjectProxy(const QByteArray& identifier, QBackendRemoteObject* object) override;
+    void removeObject(const QByteArray& identifier) override;
+    void resetObjectData(const QByteArray& identifier, bool synchronous = false) override;
 
 signals:
     void urlChanged();
@@ -60,8 +60,8 @@ private:
     std::function<bool(const QJsonObject&)> m_syncCallback;
     QJsonObject m_syncResult;
 
-    QMultiHash<QByteArray, QBackendRemoteObject*> m_subscribedObjects;
-    QHash<QByteArray, QPointer<QObject>> m_objects;
+    // Hash of identifier -> proxy object for all existing objects
+    QHash<QByteArray,QBackendRemoteObject*> m_objects;
     QBackendObject *m_rootObject = nullptr;
 };
 
