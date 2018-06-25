@@ -122,7 +122,7 @@ Item {
 
         MouseArea {
             anchors.fill: parent
-            onClicked: { console.log("trying to call...", parent.person.BeOlder); parent.person.BeOlder(-3) }
+            onClicked: { dataObject.passObject(parent.person) }
         }
     }
 

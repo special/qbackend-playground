@@ -14,6 +14,8 @@
 
 Q_LOGGING_CATEGORY(lcObject, "backend.object")
 
+template<typename T> static void *copyMetaArg(QMetaType::Type type, void *p, const T &v);
+
 QBackendObject::QBackendObject(QBackendAbstractConnection *connection, QByteArray identifier, const QJsonObject &type, QObject *parent)
     : QObject(parent)
     , d(new BackendObjectPrivate(this, connection, identifier))
@@ -129,15 +131,19 @@ int BackendObjectPrivate::metacall(QMetaObject::Call c, int id, void **argv)
         int count = metaObject->propertyCount() - metaObject->propertyOffset();
         QMetaProperty property = metaObject->property(id + metaObject->propertyOffset());
 
-        if (!m_dataReady) {
-            // XXX This ends up in objectFound and sends notify signals, which sounds a little
-            // dangerous.. I could imagine it creating fake binding loops. They could be deferred
-            // I guess?
-            qCDebug(lcObject) << "Blocking to load data for object" << m_identifier << "from read of property" << property.name();
-            m_connection->subscribeSync(m_identifier, this);
-        }
+        if (property.name() == QByteArray("_qb_identifier")) {
+            jsonValueToMetaArgs(QMetaType::QString, QJsonValue(QString(m_identifier)), argv[0]);
+        } else {
+            if (!m_dataReady) {
+                // XXX This ends up in objectFound and sends notify signals, which sounds a little
+                // dangerous.. I could imagine it creating fake binding loops. They could be deferred
+                // I guess?
+                qCDebug(lcObject) << "Blocking to load data for object" << m_identifier << "from read of property" << property.name();
+                m_connection->resetObjectData(m_identifier, true);
+            }
 
-        jsonValueToMetaArgs(static_cast<QMetaType::Type>(property.userType()), m_dataObject.value(property.name()), argv[0]);
+            jsonValueToMetaArgs(static_cast<QMetaType::Type>(property.userType()), m_dataObject.value(property.name()), argv[0]);
+        }
 
         id -= count;
     } else if (c == QMetaObject::InvokeMetaMethod) {
@@ -163,6 +169,15 @@ int BackendObjectPrivate::metacall(QMetaObject::Call c, int id, void **argv)
                 case QMetaType::QVariant:
                     args.append(reinterpret_cast<QVariant*>(argv[i+1])->toJsonValue());
                     break;
+                case QMetaType::QObjectStar:
+                    if (!*reinterpret_cast<QObject**>(argv[i+1])) {
+                        args.append(QJsonValue());
+                    } else {
+                        QString id = (*reinterpret_cast<QObject**>(argv[i+1]))->property("_qb_identifier").toString();
+                        if (!id.isEmpty()) {
+                            args.append(QJsonObject{{"_qbackend_", "object"}, {"identifier", id}});
+                        }
+                    }
                 default:
                     // XXX
                     break;
@@ -278,6 +293,8 @@ QMetaObject *BackendObjectPrivate::metaObjectFromType(const QJsonObject &type, c
     b.setClassName(type.value("name").toString().toUtf8());
     if (superClass)
         b.setSuperClass(superClass);
+
+    b.addProperty("_qb_identifier", "QString");
 
     qCDebug(lcObject) << "Building metaobject for type:" << type;
 

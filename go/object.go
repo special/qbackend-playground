@@ -203,17 +203,25 @@ func (o *objectImpl) Invoke(methodName string, inArgs ...interface{}) error {
 		var callArg reflect.Value
 
 		// Replace references to QObjects with the objects themselves
-		if inArgValue.Kind() == reflect.Map &&
-			inArgValue.Type().Key().Kind() == reflect.String &&
-			inArgValue.MapIndex(reflect.ValueOf("_qbackend_")).String() == "object" {
-			identifier := inArgValue.MapIndex(reflect.ValueOf("identifier"))
-			if identifier.Kind() != reflect.String {
-				return fmt.Errorf("qobject argument %d is malformed; invalid identifier %v", i, identifier)
+		if inArgValue.Kind() == reflect.Map && inArgValue.Type().Key().Kind() == reflect.String {
+			objV := inArgValue.MapIndex(reflect.ValueOf("_qbackend_"))
+			if objV.Kind() == reflect.Interface {
+				objV = objV.Elem()
+			}
+			if objV.Kind() != reflect.String || objV.String() != "object" {
+				return fmt.Errorf("qobject argument %d is malformed; object tag is incorrect", i)
+			}
+			objV = inArgValue.MapIndex(reflect.ValueOf("identifier"))
+			if objV.Kind() == reflect.Interface {
+				objV = objV.Elem()
+			}
+			if objV.Kind() != reflect.String {
+				return fmt.Errorf("qobject argument %d is malformed; invalid identifier %v", i, objV)
 			}
 
 			// Will be nil if the object does not exist
 			// Replace the inArgValue so the logic below can handle type matching and conversion
-			inArgValue = reflect.ValueOf(o.C.Object(identifier.String()))
+			inArgValue = reflect.ValueOf(o.C.Object(objV.String()))
 		}
 
 		// Match types, converting or unmarshaling if possible
@@ -248,7 +256,7 @@ func (o *objectImpl) Invoke(methodName string, inArgs ...interface{}) error {
 			callArgs[i] = callArg
 		} else {
 			return fmt.Errorf("wrong type for argument %d to %s; expected %s, provided %s",
-				i, methodName, argType.String(), callArg.Type().String())
+				i, methodName, argType.String(), inArgValue.Type().String())
 		}
 	}
 

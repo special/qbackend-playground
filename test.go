@@ -21,10 +21,22 @@ func (p *Person) BeOlder(years int) {
 
 type generalData struct {
 	qbackend.QObject
-	TestData    string          `json:"testData"`
-	TotalPeople int             `json:"totalPeople"`
-	MainPerson  *Person         `json:"mainPerson"`
-	PeopleModel *qbackend.Model `json:"peopleModel"`
+	TestData    string
+	TotalPeople int
+	MainPerson  *Person
+	PeopleModel *qbackend.Model
+
+	TestDataChanged func()
+}
+
+func (gd *generalData) PassObject(person *Person) {
+	if person == nil {
+		gd.TestData = "passed nil person"
+	} else {
+		gd.TestData = fmt.Sprintf("passed %s %s", person.FirstName, person.LastName)
+	}
+	gd.TestDataChanged()
+	gd.ResetProperties()
 }
 
 type PersonModel struct {
