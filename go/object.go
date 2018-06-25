@@ -282,7 +282,10 @@ func (o *objectImpl) emitReflected(signal string, args []reflect.Value) {
 }
 
 func (o *objectImpl) ResetProperties() {
-	panic("not implemented") // XXX
+	if !o.Referenced() {
+		return
+	}
+	o.C.(*ProcessConnection).sendUpdate(o)
 }
 
 // Unfortunately, even though this method is embedded onto the object type, it can't
