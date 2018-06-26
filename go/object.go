@@ -90,6 +90,11 @@ type objectImpl struct {
 
 	Object interface{}
 	Type   *typeInfo
+
+	// Number of other objects that have a marshaled reference to this one
+	refCount int
+	// object id -> count for references to other objects in our properties
+	refChildren map[string]int
 }
 
 var errNotQObject = errors.New("Struct does not embed QObject")
@@ -107,9 +112,10 @@ func initObjectId(object interface{}, c Connection, id string) (QObject, error) 
 	}
 
 	impl := &objectImpl{
-		C:      c,
-		Id:     id,
-		Object: object,
+		C:           c,
+		Id:          id,
+		Object:      object,
+		refChildren: make(map[string]int),
 	}
 
 	if ti, err := parseType(reflect.TypeOf(object)); err != nil {
@@ -324,7 +330,7 @@ func (o *objectImpl) MarshalJSON() ([]byte, error) {
 // As noted above, MarshalJSON can't correctly capture and initialize trees containing
 // a QObject. MarshalObject scans the struct to initialize QObjects, then returns a
 // map that correctly represents the properties of this object. That map can be passed
-// (in-)directly to json.Marshal. Specific differences from JSON marshal are:;
+// (in-)directly to json.Marshal. Specific differences from JSON marshal are:
 //
 //   - Fields are filtered and renamed in the same manner as properties in typeinfo
 //   - Other json tag options on fields are ignored, including omitempty
@@ -341,8 +347,35 @@ func (o *objectImpl) MarshalObject() (map[string]interface{}, error) {
 	value := reflect.Indirect(reflect.ValueOf(o.Object))
 	for name, index := range o.Type.propertyFieldIndex {
 		field := value.Field(index)
-		if err := o.initObjectsUnder(field); err != nil {
+		if refs, err := o.initObjectsUnder(field); err != nil {
 			return nil, err
+		} else {
+			// Zero out all child ref counts
+			for k, _ := range o.refChildren {
+				o.refChildren[k] = 0
+			}
+
+			// Add references from refs
+			for _, id := range refs {
+				if _, existing := o.refChildren[id]; !existing {
+					// Reference to an object that was not referenced before
+					if obj := o.C.Object(id); obj != nil {
+						objectImplFor(obj).refCount++
+					}
+				}
+				o.refChildren[id]++
+			}
+
+			// Dereference objects that are no longer referenced here
+			for k, v := range o.refChildren {
+				if v > 0 {
+					continue
+				}
+				delete(o.refChildren, k)
+				if obj := o.C.Object(k); obj != nil {
+					objectImplFor(obj).refCount--
+				}
+			}
 		}
 		data[name] = field.Interface()
 	}
@@ -353,14 +386,19 @@ func (o *objectImpl) MarshalObject() (map[string]interface{}, error) {
 // initObjectsUnder scans a Value for references to any QObject types, and
 // initializes these if necessary. This scan is recursive through any types
 // other than QObject itself.
-func (o *objectImpl) initObjectsUnder(v reflect.Value) error {
+//
+// This scan also maintains the list of object IDs referenced within this
+// object, which is returned here and stored as refChildren.
+func (o *objectImpl) initObjectsUnder(v reflect.Value) ([]string, error) {
 	for v.Kind() == reflect.Ptr {
 		v = reflect.Indirect(v)
 		if !v.IsValid() {
 			// nil pointer
-			return nil
+			return nil, nil
 		}
 	}
+
+	var refs []string
 
 	switch v.Kind() {
 	case reflect.Array:
@@ -368,22 +406,26 @@ func (o *objectImpl) initObjectsUnder(v reflect.Value) error {
 	case reflect.Slice:
 		elemType := v.Type().Elem()
 		if !typeCouldContainQObject(elemType) {
-			return nil
+			return nil, nil
 		}
 		for i := 0; i < v.Len(); i++ {
-			if err := o.initObjectsUnder(v.Index(i)); err != nil {
-				return err
+			if elemRefs, err := o.initObjectsUnder(v.Index(i)); err != nil {
+				return nil, err
+			} else {
+				refs = append(refs, elemRefs...)
 			}
 		}
 
 	case reflect.Map:
 		elemType := v.Type().Elem()
 		if !typeCouldContainQObject(elemType) {
-			return nil
+			return nil, nil
 		}
 		for _, key := range v.MapKeys() {
-			if err := o.initObjectsUnder(v.MapIndex(key)); err != nil {
-				return err
+			if elemRefs, err := o.initObjectsUnder(v.MapIndex(key)); err != nil {
+				return nil, err
+			} else {
+				refs = append(refs, elemRefs...)
 			}
 		}
 
@@ -391,12 +433,13 @@ func (o *objectImpl) initObjectsUnder(v reflect.Value) error {
 		panic("QObject initialization through interfaces is not implemented yet") // XXX
 
 	case reflect.Struct:
-		if _, err := initObject(v.Addr().Interface(), o.C); err == nil {
+		if newObj, err := initObject(v.Addr().Interface(), o.C); err == nil {
 			// Valid QObject, possibly just initialized. Stop recursion here
-			return nil
+			refs = append(refs, newObj.Identifier())
+			return refs, nil
 		} else if err != errNotQObject {
 			// Is a QObject, but initialization failed
-			return err
+			return nil, err
 		}
 
 		// Not a QObject
@@ -406,14 +449,16 @@ func (o *objectImpl) initObjectsUnder(v reflect.Value) error {
 			}
 			field := v.Field(i)
 			if typeCouldContainQObject(field.Type()) {
-				if err := o.initObjectsUnder(field); err != nil {
-					return err
+				if elemRefs, err := o.initObjectsUnder(field); err != nil {
+					return nil, err
+				} else {
+					refs = append(refs, elemRefs...)
 				}
 			}
 		}
 	}
 
-	return nil
+	return refs, nil
 }
 
 func typeCouldContainQObject(t reflect.Type) bool {
