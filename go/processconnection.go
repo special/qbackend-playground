@@ -152,19 +152,19 @@ func (c *ProcessConnection) Process() error {
 		}
 
 		switch msg["command"] {
-		case "SUBSCRIBE":
+		case "OBJECT_REF":
 			if obj, exists := c.objects[msg["identifier"].(string)]; exists {
-				// XXX Really need to change these bits of the protocol
 				objectImplFor(obj).Ref = true
-				c.sendUpdate(obj)
-			} else {
-				// Ignored; store does not exist
 			}
 
-		case "UNSUBSCRIBE":
+		case "OBJECT_DEREF":
 			if obj, exists := c.objects[msg["identifier"].(string)]; exists {
-				// XXX Not bothering to refcount anymore, protocol needs fixing
 				objectImplFor(obj).Ref = false
+			}
+
+		case "OBJECT_QUERY":
+			if obj, exists := c.objects[msg["identifier"].(string)]; exists {
+				c.sendUpdate(obj)
 			}
 
 		case "INVOKE":
@@ -251,7 +251,7 @@ func (c *ProcessConnection) sendUpdate(obj QObject) error {
 		Identifier string                 `json:"identifier"`
 		Data       map[string]interface{} `json:"data"`
 	}{
-		cmdMessage{"OBJECT_CREATE"},
+		cmdMessage{"OBJECT_RESET"},
 		obj.Identifier(),
 		data,
 	})

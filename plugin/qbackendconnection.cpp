@@ -260,7 +260,7 @@ void QBackendConnection::handleMessage(const QByteArray &message) {
             // XXX assert that type has not changed
             m_rootObject->resetData(cmd.value("data").toObject());
         }
-    } else if (command == "OBJECT_CREATE") {
+    } else if (command == "OBJECT_RESET") {
         QByteArray identifier = cmd.value("identifier").toString().toUtf8();
         auto obj = m_objects.value(identifier);
         if (obj) {
@@ -343,15 +343,20 @@ void QBackendConnection::addObjectProxy(const QByteArray& identifier, QBackendRe
 
     qCDebug(lcConnection) << "Creating remote object handler " << identifier << " on connection " << this << " for " << proxy;
     m_objects.insert(identifier, proxy);
+
+    write(QJsonObject{
+          {"command", "OBJECT_REF"},
+          {"identifier", QString::fromUtf8(identifier)},
+    });
 }
 
 void QBackendConnection::resetObjectData(const QByteArray& identifier, bool synchronous)
 {
-    write(QJsonObject{{"command", "SUBSCRIBE"}, {"identifier", QString::fromUtf8(identifier)}});
+    write(QJsonObject{{"command", "OBJECT_QUERY"}, {"identifier", QString::fromUtf8(identifier)}});
 
     if (synchronous) {
         waitForMessage([identifier](const QJsonObject &message) -> bool {
-            if (message.value("command").toString() != "OBJECT_CREATE")
+            if (message.value("command").toString() != "OBJECT_RESET")
                 return false;
             return message.value("identifier").toString().toUtf8() == identifier;
         });
@@ -360,9 +365,18 @@ void QBackendConnection::resetObjectData(const QByteArray& identifier, bool sync
 
 void QBackendConnection::removeObject(const QByteArray& identifier)
 {
+    if (!m_objects.contains(identifier)) {
+        qCWarning(lcConnection) << "Removing object identifier" << identifier << "on connection" << this << "which isn't in list";
+        return;
+    }
+
     qCDebug(lcConnection) << "Removing remote object handler " << identifier << " on connection " << this << " for ";
     m_objects.remove(identifier);
-    write(QJsonObject{{"command", "UNSUBSCRIBE"}, {"identifier", QString::fromUtf8(identifier)}});
+
+    write(QJsonObject{
+          {"command", "OBJECT_DEREF"},
+          {"identifier", QString::fromUtf8(identifier)}
+    });
 }
 
 QObject *QBackendConnection::object(const QByteArray &identifier) const
