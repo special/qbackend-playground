@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"time"
 )
 
 // ProcessConnection implements the Connection interface to communicate
@@ -138,6 +139,8 @@ func (c *ProcessConnection) Run() error {
 }
 
 func (c *ProcessConnection) Process() error {
+	lastCollection := time.Now()
+
 	for {
 		var data []byte
 		select {
@@ -192,6 +195,11 @@ func (c *ProcessConnection) Process() error {
 		default:
 			return fmt.Errorf("unknown command %v", msg)
 		}
+
+		if now := time.Now(); now.Sub(lastCollection) >= 5*time.Second {
+			c.collectObjects()
+			lastCollection = now
+		}
 	}
 
 	return nil
@@ -229,6 +237,21 @@ func (c *ProcessConnection) addObject(obj QObject) {
 	}
 
 	c.objects[id] = obj
+}
+
+// Remove objects that have no property references, are not referenced by
+// the client, and have passed their grace period from the map, allowing
+// the GC to collect them. Under these conditions, there is no valid way
+// for a client to reference the object. If the object is used again, it
+// will be re-added under the same ID.
+func (c *ProcessConnection) collectObjects() {
+	for id, obj := range c.objects {
+		impl := objectImplFor(obj)
+		if !impl.Ref && impl.refCount < 1 && time.Now().After(impl.refGraceTime) {
+			delete(c.objects, id)
+			impl.Inactive = true
+		}
+	}
 }
 
 func (c *ProcessConnection) Object(name string) QObject {

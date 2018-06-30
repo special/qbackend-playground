@@ -89,9 +89,10 @@ func objectImplFor(obj interface{}) *objectImpl {
 }
 
 type objectImpl struct {
-	C   Connection
-	Id  string
-	Ref bool
+	C        Connection
+	Id       string
+	Ref      bool
+	Inactive bool
 
 	Object interface{}
 	Type   *typeInfo
@@ -112,31 +113,39 @@ func initObject(object interface{}, c Connection) (QObject, error) {
 }
 
 func initObjectId(object interface{}, c Connection, id string) (QObject, error) {
+	var impl *objectImpl
+
 	if hasObj, obj := QObjectFor(object); !hasObj {
 		return nil, errNotQObject
-	} else if obj != nil {
-		return obj, nil
-	}
+	} else if obj == nil {
+		impl = &objectImpl{
+			C:           c,
+			Id:          id,
+			Object:      object,
+			refChildren: make(map[string]int),
+		}
 
-	impl := &objectImpl{
-		C:           c,
-		Id:          id,
-		Object:      object,
-		refChildren: make(map[string]int),
-	}
+		if ti, err := parseType(reflect.TypeOf(object)); err != nil {
+			return nil, err
+		} else {
+			impl.Type = ti
+		}
 
-	if ti, err := parseType(reflect.TypeOf(object)); err != nil {
-		return nil, err
+		// Write to the QObject embedded field
+		reflect.ValueOf(object).Elem().FieldByName("QObject").Set(reflect.ValueOf(impl))
+
+		// Initialize signals
+		if err := initSignals(object, impl); err != nil {
+			return nil, err
+		}
 	} else {
-		impl.Type = ti
-	}
-
-	// Write to the QObject embedded field
-	reflect.ValueOf(object).Elem().FieldByName("QObject").Set(reflect.ValueOf(impl))
-
-	// Initialize signals
-	if err := initSignals(object, impl); err != nil {
-		return nil, err
+		impl = objectImplFor(object)
+		if !impl.Inactive {
+			// Active object, nothing needs to happen here
+			return impl, nil
+		}
+		// Reactivating object (after collectObjects)
+		impl.Inactive = false
 	}
 
 	// Set grace period to stop the object from being removed prematurely
@@ -144,8 +153,6 @@ func initObjectId(object interface{}, c Connection, id string) (QObject, error) 
 
 	// Register with connection
 	if c != nil {
-		// XXX This is a bad leak: there's no way to ever remove these objects
-		// XXX Assuming type of Connection, but that's feeling reasonable..
 		c.(*ProcessConnection).addObject(object.(QObject))
 	}
 
