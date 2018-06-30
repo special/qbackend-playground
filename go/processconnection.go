@@ -154,12 +154,16 @@ func (c *ProcessConnection) Process() error {
 		switch msg["command"] {
 		case "OBJECT_REF":
 			if obj, exists := c.objects[msg["identifier"].(string)]; exists {
-				objectImplFor(obj).Ref = true
+				impl := objectImplFor(obj)
+				impl.Ref = true
+				impl.refsChanged()
 			}
 
 		case "OBJECT_DEREF":
 			if obj, exists := c.objects[msg["identifier"].(string)]; exists {
-				objectImplFor(obj).Ref = false
+				impl := objectImplFor(obj)
+				impl.Ref = false
+				impl.refsChanged()
 			}
 
 		case "OBJECT_QUERY":

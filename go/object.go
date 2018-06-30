@@ -6,8 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"time"
 
 	uuid "github.com/satori/go.uuid"
+)
+
+const (
+	objectRefGracePeriod = 5 * time.Second
 )
 
 // Add names of any functions in QObject to the blacklist in type.go
@@ -95,6 +100,8 @@ type objectImpl struct {
 	refCount int
 	// object id -> count for references to other objects in our properties
 	refChildren map[string]int
+	// Keep object alive until refGraceTime
+	refGraceTime time.Time
 }
 
 var errNotQObject = errors.New("Struct does not embed QObject")
@@ -132,6 +139,9 @@ func initObjectId(object interface{}, c Connection, id string) (QObject, error) 
 		return nil, err
 	}
 
+	// Set grace period to stop the object from being removed prematurely
+	impl.refsChanged()
+
 	// Register with connection
 	if c != nil {
 		// XXX This is a bad leak: there's no way to ever remove these objects
@@ -165,6 +175,13 @@ func initSignals(object interface{}, impl *objectImpl) error {
 	}
 
 	return nil
+}
+
+// Call after changing o.refCount or o.Ref, or when the grace period should reset
+func (o *objectImpl) refsChanged() {
+	if !o.Ref && o.refCount < 1 {
+		o.refGraceTime = time.Now().Add(objectRefGracePeriod)
+	}
 }
 
 func (o *objectImpl) Connection() Connection {
@@ -324,6 +341,12 @@ func (o *objectImpl) MarshalJSON() ([]byte, error) {
 		o.Identifier(),
 		o.Type,
 	}
+
+	// Marshaling typeinfo for an object resets the refcounting grace period.
+	// This ensures that the client has enough time to reference an object from
+	// e.g. a signal parameter before it could be cleaned up.
+	o.refsChanged()
+
 	return json.Marshal(obj)
 }
 
@@ -361,6 +384,7 @@ func (o *objectImpl) MarshalObject() (map[string]interface{}, error) {
 					// Reference to an object that was not referenced before
 					if obj := o.C.Object(id); obj != nil {
 						objectImplFor(obj).refCount++
+						o.refsChanged()
 					}
 				}
 				o.refChildren[id]++
@@ -374,6 +398,7 @@ func (o *objectImpl) MarshalObject() (map[string]interface{}, error) {
 				delete(o.refChildren, k)
 				if obj := o.C.Object(k); obj != nil {
 					objectImplFor(obj).refCount--
+					o.refsChanged()
 				}
 			}
 		}
