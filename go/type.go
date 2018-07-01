@@ -56,6 +56,8 @@ func typeShouldIgnoreField(field reflect.StructField) bool {
 	} else if field.Type.Kind() != reflect.Func && field.Tag.Get("json") == "-" {
 		// Non-signal property that isn't encoded by JSON
 		return true
+	} else if field.Name == "QObject" {
+		return true
 	} else {
 		return false
 	}
@@ -164,7 +166,6 @@ func parseType(t reflect.Type) (*typeInfo, error) {
 		t = t.Elem()
 	}
 
-	qobjFound := false
 	typeInfo := &typeInfo{
 		Properties:         make(map[string]string),
 		Methods:            make(map[string][]string),
@@ -173,6 +174,17 @@ func parseType(t reflect.Type) (*typeInfo, error) {
 	}
 	typeInfo.Name = t.Name()
 
+	if field, ok := t.FieldByName("QObject"); ok {
+		if field.Type != reflect.TypeOf((*QObject)(nil)).Elem() {
+			return nil, fmt.Errorf("Struct has a 'QObject' field of type '%s'. This field must be a QObject", field.Type.Name())
+		}
+		if !field.Anonymous {
+			return nil, fmt.Errorf("Struct has a 'QObject' field. QObject must be embedded instead")
+		}
+	} else {
+		return nil, errNotQObject
+	}
+
 	// All exported fields are either properties, signals, QObject, or explicitly ignored
 	numFields := t.NumField()
 	for i := 0; i < numFields; i++ {
@@ -180,18 +192,6 @@ func parseType(t reflect.Type) (*typeInfo, error) {
 		if typeShouldIgnoreField(field) {
 			continue
 		}
-
-		if field.Name == "QObject" {
-			if field.Type != reflect.TypeOf((*QObject)(nil)).Elem() {
-				return nil, fmt.Errorf("Struct has a 'QObject' field of type '%s'. This field must be a QObject", field.Type.Name())
-			}
-			if !field.Anonymous {
-				return nil, fmt.Errorf("Struct must embed the QObject type")
-			}
-			qobjFound = true
-			continue
-		}
-
 		name := typeFieldName(field)
 
 		// Signals are represented by func properties, with a qbackend tag
@@ -250,10 +250,6 @@ methods:
 		}
 
 		typeInfo.Methods[name] = paramTypes
-	}
-
-	if !qobjFound {
-		return nil, fmt.Errorf("Struct does not embed QObject")
 	}
 
 	return typeInfo, nil
