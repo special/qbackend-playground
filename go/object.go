@@ -45,6 +45,10 @@ type QObject interface {
 	// ResetProperties is effectively identical to emitting the Changed
 	// signal for all properties of the object.
 	ResetProperties()
+	// Changed updates the value of a property on the client, and sends
+	// the changed signal. Changed should be used instead of emitting the
+	// signal directly; it also handles value updates.
+	Changed(property string)
 }
 
 // QObjectFor indicates whether a value is a qbackend object, and returns
@@ -317,6 +321,12 @@ func (o *objectImpl) emitReflected(signal string, args []reflect.Value) {
 		unwrappedArgs = append(unwrappedArgs, a.Interface())
 	}
 	o.Emit(signal, unwrappedArgs...)
+}
+
+func (o *objectImpl) Changed(property string) {
+	// Currently, all property updates are full resets, and the client will
+	// emit changed signals for them. That will hopefully change
+	o.ResetProperties()
 }
 
 func (o *objectImpl) ResetProperties() {
