@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QJsonObject>
 #include <QMetaObject>
+#include <QJSValue>
 
 #include "qbackendabstractconnection.h"
 
@@ -32,4 +33,5 @@ public:
     QMetaObject *metaObjectFromType(const QJsonObject &type, const QMetaObject *superClass = nullptr);
     std::pair<QString,QString> qtTypesFromType(const QString &type);
     void *jsonValueToMetaArgs(QMetaType::Type type, const QJsonValue &value, void *p = nullptr);
+    QJSValue jsonValueToJSValue(QJSEngine *engine, const QJsonValue &value);
 };

@@ -8,6 +8,7 @@
 #include <QLoggingCategory>
 #include <QQmlComponent>
 #include <QQmlEngine>
+#include <QJSValueIterator>
 #include <QtCore/private/qmetaobjectbuilder_p.h>
 #include "qbackendobject.h"
 #include "qbackendobject_p.h"
@@ -15,6 +16,7 @@
 Q_LOGGING_CATEGORY(lcObject, "backend.object")
 
 template<typename T> static void *copyMetaArg(QMetaType::Type type, void *p, const T &v);
+QJsonValue jsValueToJsonValue(const QJSValue &value);
 
 QBackendObject::QBackendObject(QBackendAbstractConnection *connection, QByteArray identifier, const QJsonObject &type, QObject *parent)
     : QObject(parent)
@@ -178,8 +180,13 @@ int BackendObjectPrivate::metacall(QMetaObject::Call c, int id, void **argv)
                             args.append(QJsonObject{{"_qbackend_", "object"}, {"identifier", id}});
                         }
                     }
+                    break;
                 default:
-                    // XXX
+                    if (method.parameterType(i) == QMetaType::type("QJSValue")) {
+                        args.append(jsValueToJsonValue(*reinterpret_cast<QJSValue*>(argv[i+1])));
+                    } else {
+                        // XXX
+                    }
                     break;
                 }
             }
@@ -191,6 +198,96 @@ int BackendObjectPrivate::metacall(QMetaObject::Call c, int id, void **argv)
     }
 
     return id;
+}
+
+QJSValue BackendObjectPrivate::jsonValueToJSValue(QJSEngine *engine, const QJsonValue &value)
+{
+    switch (value.type()) {
+    case QJsonValue::Null:
+        return QJSValue(QJSValue::NullValue);
+    case QJsonValue::Undefined:
+        return QJSValue(QJSValue::UndefinedValue);
+    case QJsonValue::Bool:
+        return QJSValue(value.toBool());
+    case QJsonValue::Double:
+        return QJSValue(value.toDouble());
+    case QJsonValue::String:
+        return QJSValue(value.toString());
+    case QJsonValue::Array:
+        {
+            QJsonArray array = value.toArray();
+            QJSValue v = engine->newArray(array.size());
+            for (int i = 0; i < array.size(); i++) {
+                v.setProperty(i, jsonValueToJSValue(engine, array.at(i)));
+            }
+            return v;
+        }
+    case QJsonValue::Object:
+        {
+            QJsonObject object = value.toObject();
+            if (object.value("_qbackend_").toString() == "object") {
+                QObject *qobj = m_connection->ensureObject(object);
+                if (!qobj) {
+                    return QJSValue(QJSValue::NullValue);
+                } else {
+                    return engine->newQObject(qobj);
+                }
+            }
+
+            QJSValue v = engine->newObject();
+            for (auto it = object.constBegin(); it != object.constEnd(); it++) {
+                v.setProperty(it.key(), jsonValueToJSValue(engine, it.value()));
+            }
+            return v;
+        }
+    default:
+        Q_UNREACHABLE();
+    }
+}
+
+QJsonValue jsValueToJsonValue(const QJSValue &value)
+{
+    if (value.isQObject()) {
+        QObject *object = value.toQObject();
+        if (!object) {
+            return QJsonValue(QJsonValue::Null);
+        }
+
+        QString id = object->property("_qb_identifier").toString();
+        if (!id.isEmpty()) {
+            return QJsonObject{{"_qbackend_", "object"}, {"identifier", id}};
+        } else {
+            // XXX warn about passing non-backend objects
+            return QJsonValue(QJsonValue::Undefined);
+        }
+    } else if (value.isObject()) {
+        QJsonObject object;
+        QJSValueIterator it(value);
+        while (it.hasNext()) {
+            it.next();
+            object.insert(it.name(), jsValueToJsonValue(it.value()));
+        }
+        return object;
+    } else if (value.isArray()) {
+        QJsonArray array;
+        int length = value.property("length").toInt();
+        for (int i = 0; i < length; i++) {
+            array.append(jsValueToJsonValue(value.property(i)));
+        }
+        return array;
+    } else if (value.isString()) {
+        return QJsonValue(value.toString());
+    } else if (value.isBool()) {
+        return QJsonValue(value.toBool());
+    } else if (value.isNumber()) {
+        return QJsonValue(value.toNumber());
+    } else if (value.isNull()) {
+        return QJsonValue(QJsonValue::Null);
+    } else if (value.isUndefined()) {
+        return QJsonValue(QJsonValue::Undefined);
+    } else {
+        Q_UNREACHABLE();
+    }
 }
 
 // Construct a copy of 'v' (which is type 'type') at 'p', or allocate if 'p' is nullptr
@@ -237,8 +334,11 @@ void *BackendObjectPrivate::jsonValueToMetaArgs(QMetaType::Type type, const QJso
         break;
 
     default:
-        // XXX May be possible to do some QVariant conversion here?
-        qCWarning(lcObject) << "Unknown type" << QMetaType::typeName(type) << "in JSON value conversion";
+        if (type == QMetaType::type("QJSValue")) {
+            p = copyMetaArg(type, p, jsonValueToJSValue(qjsEngine(m_object), value));
+        } else {
+            qCWarning(lcObject) << "Unknown type" << QMetaType::typeName(type) << "in JSON value conversion";
+        }
         break;
     }
 
@@ -261,10 +361,9 @@ void *BackendObjectPrivate::jsonValueToMetaArgs(QMetaType::Type type, const QJso
  *   }
  * }
  *
- * valid type strings are: string, int, double, bool, var, object
+ * valid type strings are: string, int, double, bool, var, object, array, map
  * object is a qbackend object; it will contain the object structure.
- * var can hold any JSON type, including JSON objects.
- * var can also hold qbackend objects, which are recognized by a special property.
+ * var can hold any of the other types
  */
 
 /* Object structure:
@@ -337,7 +436,6 @@ QMetaObject *BackendObjectPrivate::metaObjectFromType(const QJsonObject &type, c
         // XXX lots of things also
         QString name = it.key();
         // XXX can't just go changing this..
-        //name = name[0].toLower() + name.mid(1);
         QString signature = name + "(";
         QJsonArray paramTypes = it.value().toArray();
         for (const QJsonValue &type : paramTypes) {
@@ -365,10 +463,12 @@ std::pair<QString,QString> BackendObjectPrivate::qtTypesFromType(const QString &
         return {"double","double"};
     else if (type == "bool")
         return {"bool","bool"};
-    else if (type == "var")
-        return {"QVariant","var"};
     else if (type == "object")
         return {"QObject*","var"};
+    else if (type == "array")
+        return {"QJSValue","var"};
+    else if (type == "map")
+        return {"QJSValue","var"};
     else
         return {"QVariant","var"};
 }

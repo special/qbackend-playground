@@ -103,6 +103,9 @@ func typeFieldChangedName(fieldName string) string {
 
 func typeInfoTypeName(t reflect.Type) string {
 	switch t.Kind() {
+	case reflect.Ptr:
+		return typeInfoTypeName(t.Elem())
+
 	case reflect.Bool:
 		return "bool"
 
@@ -136,12 +139,23 @@ func typeInfoTypeName(t reflect.Type) string {
 		// TODO also []byte?
 		return "string"
 
-	default:
+	case reflect.Array:
+		fallthrough
+	case reflect.Slice:
+		return "array"
+
+	case reflect.Map:
+		return "map"
+
+	case reflect.Struct:
 		if typeIsQObject(t) {
 			return "object"
 		} else {
-			return "var"
+			return "map"
 		}
+
+	default:
+		return "var"
 	}
 }
 
