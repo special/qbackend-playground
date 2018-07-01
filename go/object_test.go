@@ -20,6 +20,12 @@ type BasicQObject struct {
 	StringData string
 	StructData BasicStruct
 	Child      *BasicQObject
+
+	initWasCalled bool
+}
+
+func (o *BasicQObject) InitObject() {
+	o.initWasCalled = true
 }
 
 func TestMain(m *testing.M) {
@@ -46,6 +52,10 @@ func TestQObjectInit(t *testing.T) {
 
 	// XXX Identifier uniqueness
 	// XXX Signal initialization
+
+	if !q.initWasCalled {
+		t.Error("QObjectHasInit initialization function not called")
+	}
 
 	ti, _ := json.Marshal(q.QObject.(*objectImpl).Type)
 	t.Logf("Typeinfo: %s", ti)

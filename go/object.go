@@ -51,6 +51,15 @@ type QObject interface {
 	Changed(property string)
 }
 
+// If a type embedding QObject implements QObjectHasInit, the InitObject
+// function will be called immediately after QObject is initialized. This
+// can be used to initialize fields automatically at the right time, or
+// even as a form of constructor.
+type QObjectHasInit interface {
+	QObject
+	InitObject()
+}
+
 // QObjectFor indicates whether a value is a qbackend object, and returns
 // the embedded QObject instance if present.
 func QObjectFor(obj interface{}) (bool, QObject) {
@@ -118,10 +127,12 @@ func initObject(object interface{}, c Connection) (QObject, error) {
 
 func initObjectId(object interface{}, c Connection, id string) (QObject, error) {
 	var impl *objectImpl
+	var newObject bool
 
 	if hasObj, obj := QObjectFor(object); !hasObj {
 		return nil, errNotQObject
 	} else if obj == nil {
+		newObject = true
 		impl = &objectImpl{
 			C:           c,
 			Id:          id,
@@ -158,6 +169,13 @@ func initObjectId(object interface{}, c Connection, id string) (QObject, error) 
 	// Register with connection
 	if c != nil {
 		c.(*ProcessConnection).addObject(object.(QObject))
+	}
+
+	// Call InitObject for new objects if implemented
+	if newObject {
+		if io, ok := object.(QObjectHasInit); ok {
+			io.InitObject()
+		}
 	}
 
 	return impl, nil
