@@ -39,11 +39,11 @@ type modelAPI struct {
 	RoleNames []string `json:"roleNames"`
 
 	// Signals
-	ModelReset  func(interface{})      `qbackend:"rowData"`
-	ModelInsert func(int, interface{}) `qbackend:"start,rowData"`
-	ModelRemove func(int, int)         `qbackend:"start,end"`
-	ModelMove   func(int, int, int)    `qbackend:"start,end,destination"`
-	ModelUpdate func(int, interface{}) `qbackend:"row,data"`
+	ModelReset  func([]interface{})      `qbackend:"rowData"`
+	ModelInsert func(int, []interface{}) `qbackend:"start,rowData"`
+	ModelRemove func(int, int)           `qbackend:"start,end"`
+	ModelMove   func(int, int, int)      `qbackend:"start,end,destination"`
+	ModelUpdate func(int, interface{})   `qbackend:"row,data"`
 }
 
 func (m *modelAPI) Reset() {
@@ -114,25 +114,15 @@ func (m *Model) Inserted(start, count int) {
 		}
 	}
 
-	m.ModelAPI.Emit("insert", struct {
-		Start int           `json:"start"`
-		Rows  []interface{} `json:"rows"`
-	}{start, rows})
+	m.ModelAPI.Emit("modelInsert", start, rows)
 }
 
 func (m *Model) Removed(start, count int) {
-	m.ModelAPI.Emit("remove", struct {
-		Start int `json:"start"`
-		End   int `json:"end"`
-	}{start, start + count - 1})
+	m.ModelAPI.Emit("modelRemove", start, start+count-1)
 }
 
 func (m *Model) Moved(start, count, destination int) {
-	m.ModelAPI.Emit("move", struct {
-		Start       int `json:"start"`
-		End         int `json:"end"`
-		Destination int `json:"destination"`
-	}{start, start + count - 1, destination})
+	m.ModelAPI.Emit("modelMove", start, start+count-1, destination)
 }
 
 func (m *Model) Updated(row int) {
@@ -142,10 +132,5 @@ func (m *Model) Updated(row int) {
 		return
 	}
 
-	rows := make(map[int]interface{})
-	rows[row] = data.Row(row)
-
-	m.ModelAPI.Emit("update", struct {
-		Rows map[int]interface{}
-	}{rows})
+	m.ModelAPI.Emit("modelUpdate", row, data.Row(row))
 }

@@ -4,6 +4,7 @@
 #include "qbackendmodel.h"
 #include <QVariant>
 #include <QVector>
+#include <QJSValue>
 
 class QBackendObject;
 
@@ -16,12 +17,12 @@ public:
 
     QBackendObject *m_modelData = nullptr;
     QStringList m_roleNames;
-    QVector<QVariantList> m_rowData;
+    QVector<QJSValue> m_rowData;
 
     QBackendModel *model() { return static_cast<QBackendModel*>(m_object); }
     void ensureModel();
 
 public slots:
-    void doReset(const QVariant &data);
-    void doInsert(int start, const QVariant &data);
+    void doReset(const QJSValue &data);
+    void doInsert(int start, const QJSValue &data);
 };

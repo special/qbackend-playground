@@ -470,6 +470,6 @@ std::pair<QString,QString> BackendObjectPrivate::qtTypesFromType(const QString &
     else if (type == "map")
         return {"QJSValue","var"};
     else
-        return {"QVariant","var"};
+        return {"QJSValue","var"};
 }
 

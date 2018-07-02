@@ -53,8 +53,8 @@ int QBackendModel::qt_metacall(QMetaObject::Call c, int id, void **argv)
  *     "reset": []
  *   },
  *   "signals": {
- *     "modelReset": [ "var rowData" ],
- *     "modelInsert": [ "int start", "var rowData" ],
+ *     "modelReset": [ "array rowData" ],
+ *     "modelInsert": [ "int start", "array rowData" ],
  *     "modelRemove": [ "int start", "int end" ],
  *     "modelMove": [ "int start", "int end", "int destination" ],
  *     "modelUpdate": [ "int row", "var rowData" ]
@@ -81,8 +81,8 @@ void BackendModelPrivate::ensureModel()
         return;
     }
 
-    connect(m_modelData, SIGNAL(modelReset(QVariant)), this, SLOT(doReset(QVariant)));
-    connect(m_modelData, SIGNAL(modelInsert(int,QVariant)), this, SLOT(doInsert(int,QVariant)));
+    connect(m_modelData, SIGNAL(modelReset(QJSValue)), this, SLOT(doReset(QJSValue)));
+    connect(m_modelData, SIGNAL(modelInsert(int,QJSValue)), this, SLOT(doInsert(int,QJSValue)));
 
     QMetaObject::invokeMethod(m_modelData, "reset");
 }
@@ -105,29 +105,27 @@ int QBackendModel::rowCount(const QModelIndex&) const
 QVariant QBackendModel::data(const QModelIndex &index, int role) const
 {
     const_cast<QBackendModel*>(this)->d->ensureModel();
-    if (index.row() < 0 || index.row() >= d->m_rowData.size())
+    if (index.row() < 0 || index.row() >= d->m_rowData.size() || role < Qt::UserRole)
         return QVariant();
 
-    const QVariantList &row = d->m_rowData[index.row()];
-    if (role < Qt::UserRole || (role - Qt::UserRole) > row.size())
-        return QVariant();
-
-    return row[role - Qt::UserRole];
+    const QJSValue &row = d->m_rowData[index.row()];
+    // Note that this is a variant containing a QJSValue, not a QJSValue converted
+    // to a variant. Hopefully this is more efficient for QML to deal with.
+    return QVariant::fromValue(row.property(role - Qt::UserRole));
 }
 
-// XXX Need to handle complex types properly, for objects etc
-
-void BackendModelPrivate::doReset(const QVariant &data)
+void BackendModelPrivate::doReset(const QJSValue &data)
 {
     model()->beginResetModel();
     m_rowData.clear();
 
-    QVariantList rows = data.toList();
-    m_rowData.reserve(rows.size());
-    for (const QVariant &row : rows) {
-        QVariantList rowData = row.toList();
-        if (rowData.size() != m_roleNames.size()) {
-            qCWarning(lcModel) << "Model row" << m_rowData.size() << "has" << rowData.size() << "fields but model expects" << m_roleNames.size();
+    int size = data.property("length").toNumber();
+    m_rowData.reserve(size);
+    for (int i = 0; i < size; i++) {
+        QJSValue rowData = data.property(i);
+        if (!rowData.isArray()) {
+            qCWarning(lcModel) << "Model row" << i << "data is not an array";
+            continue;
         }
         m_rowData.append(rowData);
     }
@@ -135,7 +133,7 @@ void BackendModelPrivate::doReset(const QVariant &data)
     model()->endResetModel();
 }
 
-void BackendModelPrivate::doInsert(int start, const QVariant &data)
+void BackendModelPrivate::doInsert(int start, const QJSValue &data)
 {
     // TODO
 }
