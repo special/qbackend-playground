@@ -404,7 +404,7 @@ func (o *objectImpl) MarshalObject() (map[string]interface{}, error) {
 
 	value := reflect.Indirect(reflect.ValueOf(o.Object))
 	for name, index := range o.Type.propertyFieldIndex {
-		field := value.Field(index)
+		field := value.FieldByIndex(index)
 		if refs, err := o.initObjectsUnder(field); err != nil {
 			return nil, err
 		} else {

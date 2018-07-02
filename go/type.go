@@ -17,6 +17,7 @@ var methodBlacklist []string = []string{
 	"Invoke",
 	"Emit",
 	"ResetProperties",
+	"Changed",
 	"InitObject",
 }
 
@@ -29,7 +30,7 @@ type typeInfo struct {
 	Methods    map[string][]string `json:"methods"`
 	Signals    map[string][]string `json:"signals"`
 
-	propertyFieldIndex map[string]int
+	propertyFieldIndex map[string][]int
 }
 
 func typeIsQObject(t reflect.Type) bool {
@@ -62,6 +63,21 @@ func typeShouldIgnoreField(field reflect.StructField) bool {
 	} else {
 		return false
 	}
+}
+
+func typeShouldIgnoreMethod(method reflect.Method) bool {
+	if method.PkgPath != "" {
+		// Unexported
+		return true
+	}
+
+	for _, badName := range methodBlacklist {
+		if method.Name == badName {
+			return true
+		}
+	}
+
+	return false
 }
 
 func typeMethodName(method reflect.Method) string {
@@ -171,7 +187,7 @@ func parseType(t reflect.Type) (*typeInfo, error) {
 		Properties:         make(map[string]string),
 		Methods:            make(map[string][]string),
 		Signals:            make(map[string][]string),
-		propertyFieldIndex: make(map[string]int),
+		propertyFieldIndex: make(map[string][]int),
 	}
 	typeInfo.Name = t.Name()
 
@@ -186,33 +202,10 @@ func parseType(t reflect.Type) (*typeInfo, error) {
 		return nil, errNotQObject
 	}
 
-	// All exported fields are either properties, signals, QObject, or explicitly ignored
-	numFields := t.NumField()
-	for i := 0; i < numFields; i++ {
-		field := t.Field(i)
-		if typeShouldIgnoreField(field) {
-			continue
-		}
-		name := typeFieldName(field)
-
-		// Signals are represented by func properties, with a qbackend tag
-		// giving a name for each parameter, which is required for QML.
-		if field.Type.Kind() == reflect.Func {
-			paramNames := strings.Split(field.Tag.Get("qbackend"), ",")
-			if field.Type.NumIn() > 0 && len(paramNames) != field.Type.NumIn() {
-				return nil, fmt.Errorf("Signal '%s' has %d parameters, but names %d. All parameters must be named in the `qbackend:` tag.", name, field.Type.NumIn(), len(paramNames))
-			}
-
-			var params []string
-			for p := 0; p < field.Type.NumIn(); p++ {
-				inType := field.Type.In(p)
-				params = append(params, typeInfoTypeName(inType)+" "+paramNames[p])
-			}
-			typeInfo.Signals[name] = params
-		} else {
-			typeInfo.Properties[name] = typeInfoTypeName(field.Type)
-			typeInfo.propertyFieldIndex[name] = i
-		}
+	// Add properties and signals from fields, including those from anonymous
+	// structs
+	if err := typeFieldsToTypeInfo(typeInfo, t, []int{}); err != nil {
+		return nil, err
 	}
 
 	// Create change signals for all properties, adopting explicit ones if they exist
@@ -228,18 +221,11 @@ func parseType(t reflect.Type) (*typeInfo, error) {
 	}
 
 	ptrType := reflect.PtrTo(t)
-methods:
 	for i := 0; i < ptrType.NumMethod(); i++ {
 		method := ptrType.Method(i)
 		methodType := method.Type
-		if method.PkgPath != "" {
-			// Unexported
+		if typeShouldIgnoreMethod(method) {
 			continue
-		}
-		for _, badName := range methodBlacklist {
-			if method.Name == badName {
-				continue methods
-			}
 		}
 
 		name := typeMethodName(method)
@@ -254,4 +240,47 @@ methods:
 	}
 
 	return typeInfo, nil
+}
+
+func typeFieldsToTypeInfo(typeInfo *typeInfo, t reflect.Type, index []int) error {
+	var anonStructs []reflect.StructField
+
+	numFields := t.NumField()
+	for i := 0; i < numFields; i++ {
+		field := t.Field(i)
+		if typeShouldIgnoreField(field) {
+			continue
+		} else if field.Anonymous {
+			// Recurse into these at the end for breadth-first
+			anonStructs = append(anonStructs, field)
+			continue
+		}
+		name := typeFieldName(field)
+
+		// Signals are represented by func properties, with a qbackend tag
+		// giving a name for each parameter, which is required for QML.
+		if field.Type.Kind() == reflect.Func {
+			paramNames := strings.Split(field.Tag.Get("qbackend"), ",")
+			if field.Type.NumIn() > 0 && len(paramNames) != field.Type.NumIn() {
+				return fmt.Errorf("Signal '%s' has %d parameters, but names %d. All parameters must be named in the `qbackend:` tag.", name, field.Type.NumIn(), len(paramNames))
+			}
+
+			var params []string
+			for p := 0; p < field.Type.NumIn(); p++ {
+				inType := field.Type.In(p)
+				params = append(params, typeInfoTypeName(inType)+" "+paramNames[p])
+			}
+			typeInfo.Signals[name] = params
+		} else {
+			typeInfo.Properties[name] = typeInfoTypeName(field.Type)
+			typeInfo.propertyFieldIndex[name] = append(index, field.Index...)
+		}
+	}
+
+	for _, at := range anonStructs {
+		if err := typeFieldsToTypeInfo(typeInfo, at.Type, append(index, at.Index...)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
