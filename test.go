@@ -24,7 +24,7 @@ type generalData struct {
 	TestData    string
 	TotalPeople int
 	MainPerson  *Person
-	PeopleModel *qbackend.Model
+	PeopleModel *PersonModel
 
 	TestDataChanged func()
 }
@@ -40,24 +40,30 @@ func (gd *generalData) PassObject(person *Person) {
 }
 
 type PersonModel struct {
-	People []Person
+	qbackend.Model
+	people []Person
 }
 
 func (pm *PersonModel) Row(row int) interface{} {
-	if row < 0 || row >= len(pm.People) {
+	if row < 0 || row >= len(pm.people) {
 		return nil
 	}
-	r := pm.People[row]
+	r := pm.people[row]
 	return []interface{}{r.FirstName, r.LastName, r.Age}
 }
 
-func (pm *PersonModel) Rows() []interface{} {
-	re := make([]interface{}, len(pm.People))
-	for i := 0; i < len(pm.People); i++ {
-		r := pm.People[i]
-		re[i] = []interface{}{r.FirstName, r.LastName, r.Age}
-	}
-	return re
+func (pm *PersonModel) RowCount() int {
+	return len(pm.people)
+}
+
+// XXX, heh, could have a type that uses structs for rows and maps the role names to
+// field names automatically... would make for very pleasant API
+//
+// Could do that somewhat automatically even: Row normally returns a []interface{}. If
+// it's a struct (ptr) or map instead of a slice... only question then is how to get
+// the role names initially, when there may be no rows to give us the type.
+func (pm *PersonModel) RoleNames() []string {
+	return []string{"firstName", "lastName", "age"}
 }
 
 func main() {
@@ -67,13 +73,12 @@ func main() {
 	gd := &generalData{TestData: "Now connected", TotalPeople: 666, MainPerson: mainPerson}
 	qb.SetRootObject(gd)
 
-	pm := &PersonModel{
-		People: []Person{
+	gd.PeopleModel = &PersonModel{
+		people: []Person{
 			Person{FirstName: "Robin", LastName: "Burchell", Age: 31},
 			Person{FirstName: "Kamilla", LastName: "Bremeraunet", Age: 30},
 		},
 	}
-	gd.PeopleModel = qbackend.NewModel(pm, qb)
 
 	qb.Run()
 	fmt.Printf("Quitting?\n")

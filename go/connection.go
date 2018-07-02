@@ -20,8 +20,8 @@ type Connection interface {
 	// channel is closed when the connection ends.
 	//
 	// No application data will be modified or accessed except during application calls to
-	// Process or other qbackend methods (such as those in Store), so this gives applications
-	// more control over concurrency.
+	// Process or other qbackend methods, so this gives applications more control over
+	// concurrency.
 	ProcessSignal() <-chan struct{}
 
 	RootObject() QObject

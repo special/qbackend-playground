@@ -85,13 +85,6 @@ void BackendModelPrivate::ensureModel()
     connect(m_modelData, SIGNAL(modelInsert(int,QVariant)), this, SLOT(doInsert(int,QVariant)));
 
     QMetaObject::invokeMethod(m_modelData, "reset");
-
-    // XXX what if _qb_model changes -- full reset, or panic and error
-    // XXX how is data represented
-    // XXX how is data handled w/o a change signal and sending the whole thing every time, given object API
-    //
-    // One option is to not put model data in properties; instead, it could be sent in via signals. reset with
-    // all, etc. Yes, that seems reasonable.
 }
 
 QHash<int, QByteArray> QBackendModel::roleNames() const
@@ -121,6 +114,8 @@ QVariant QBackendModel::data(const QModelIndex &index, int role) const
 
     return row[role - Qt::UserRole];
 }
+
+// XXX Need to handle complex types properly, for objects etc
 
 void BackendModelPrivate::doReset(const QVariant &data)
 {
