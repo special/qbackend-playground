@@ -83,6 +83,9 @@ void BackendModelPrivate::ensureModel()
 
     connect(m_modelData, SIGNAL(modelReset(QJSValue)), this, SLOT(doReset(QJSValue)));
     connect(m_modelData, SIGNAL(modelInsert(int,QJSValue)), this, SLOT(doInsert(int,QJSValue)));
+    connect(m_modelData, SIGNAL(modelRemove(int,int)), this, SLOT(doRemove(int,int)));
+    connect(m_modelData, SIGNAL(modelMove(int,int,int)), this, SLOT(doMove(int,int,int)));
+    connect(m_modelData, SIGNAL(modelUpdate(int,QJSValue)), this, SLOT(doUpdate(int,QJSValue)));
 
     QMetaObject::invokeMethod(m_modelData, "reset");
 }
@@ -135,83 +138,46 @@ void BackendModelPrivate::doReset(const QJSValue &data)
 
 void BackendModelPrivate::doInsert(int start, const QJSValue &data)
 {
-    // TODO
-}
+    int size = data.property("length").toNumber();
+    if (size < 1)
+        return;
 
-#if 0
-void QBackendInternalModel::doInsert(int start, const QJsonArray &rows)
-{
-    beginInsertRows(QModelIndex(), start, start + rows.count() - 1);
-    m_data.insert(start, rows.count(), QMap<QByteArray,QVariant>());
-    int i = start;
-    for (const auto &row : rows) {
-        m_data[i] = rowDataFromJson(row.toObject());
-        i++;
+    model()->beginInsertRows(QModelIndex(), start, start + size - 1);
+    m_rowData.insert(start, size, QJSValue());
+    for (int i = 0; i < size; i++) {
+        m_rowData[start+i] = data.property(i);
     }
-    endInsertRows();
+    model()->endInsertRows();
 }
 
-void QBackendInternalModel::doRemove(int start, int end)
+void BackendModelPrivate::doRemove(int start, int end)
 {
-    beginRemoveRows(QModelIndex(), start, end);
-    m_data.remove(start, end - start + 1);
-    endRemoveRows();
+    model()->beginRemoveRows(QModelIndex(), start, end);
+    m_rowData.remove(start, end - start + 1);
+    model()->endRemoveRows();
 }
 
-void QBackendInternalModel::doMove(int start, int end, int destination)
+void BackendModelPrivate::doMove(int start, int end, int destination)
 {
-    beginMoveRows(QModelIndex(), start, end, QModelIndex(), destination);
-    QVector<QMap<QByteArray,QVariant>> rows(end - start + 1);
-    std::copy_n(m_data.begin()+start, rows.size(), rows.begin());
+    model()->beginMoveRows(QModelIndex(), start, end, QModelIndex(), destination);
+    QVector<QJSValue> rows(end - start + 1);
+    std::copy_n(m_rowData.begin()+start, rows.size(), rows.begin());
     // XXX These indicies are likely wrong for the "move down" case that
     // is described in beginMoveRows' documentation.
-    m_data.remove(start, rows.size());
-    m_data.insert(destination, rows.size(), QMap<QByteArray,QVariant>());
-    std::copy_n(rows.begin(), rows.size(), m_data.begin()+destination);
-    endMoveRows();
+    m_rowData.remove(start, rows.size());
+    m_rowData.insert(destination, rows.size(), QJSValue());
+    std::copy_n(rows.begin(), rows.size(), m_rowData.begin()+destination);
+    model()->endMoveRows();
 
 }
-void QBackendInternalModel::doUpdate(int row, const QJsonObject &data)
+
+void BackendModelPrivate::doUpdate(int row, const QJSValue &data)
 {
-    if (row < 0 || row >= m_data.size()) {
+    if (row < 0 || row >= m_rowData.size()) {
         qCWarning(lcModel) << "invalid row" << row << "in model update";
         return;
     }
 
-    m_data[row] = rowDataFromJson(data);
-    emit dataChanged(index(row), index(row));
+    m_rowData[row] = data;
+    emit model()->dataChanged(model()->index(row), model()->index(row));
 }
-#endif
-
-#if 0
-    QJsonObject args = params.toObject();
-
-    if (method == "insert") {
-        // { "start": 0, rows: [ { ... } ] }
-        int start = args.value("start").toInt();
-        QJsonArray rows = args.value("rows").toArray();
-        m_model->doInsert(start, rows);
-    } else if (method == "remove") {
-        // { "start": 0, "end": 0 }
-        int start = args.value("start").toInt();
-        int end = args.value("end").toInt();
-        m_model->doRemove(start, end);
-    } else if (method == "move") {
-        // { "start": 0, "end": 0, "destination": 0 }
-        int start = args.value("start").toInt();
-        int end = args.value("end").toInt();
-        int destination = args.value("destination").toInt();
-        m_model->doMove(start, end, destination);
-    } else if (method == "update") {
-        // { rows: { "0": { ... } } }
-        QJsonObject rowMap = args.value("rows").toObject();
-        for (auto it = rowMap.constBegin(); it != rowMap.constEnd(); it++) {
-            m_model->doUpdate(it.key().toInt(), it.value().toObject());
-        }
-    } else if (method == "reset") {
-        // identical to data object in objectFound
-        m_model->doReset(args);
-    } else {
-        qCWarning(lcModel) << "unknown method" << method << "invoked";
-    }
-#endif

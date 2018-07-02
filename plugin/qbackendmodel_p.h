@@ -25,4 +25,7 @@ public:
 public slots:
     void doReset(const QJSValue &data);
     void doInsert(int start, const QJSValue &data);
+    void doRemove(int start, int end);
+    void doMove(int start, int end, int destination);
+    void doUpdate(int row, const QJSValue &data);
 };
