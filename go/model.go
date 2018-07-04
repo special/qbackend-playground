@@ -78,6 +78,9 @@ func (m *Model) InitObject() {
 		Model:     m,
 		RoleNames: data.RoleNames(),
 	}
+
+	// Initialize ModelAPI right away as well
+	m.Connection().InitObject(m.ModelAPI)
 }
 
 func (m *Model) Reset() {
