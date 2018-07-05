@@ -335,7 +335,9 @@ void *BackendObjectPrivate::jsonValueToMetaArgs(QMetaType::Type type, const QJso
 
     default:
         if (type == QMetaType::type("QJSValue")) {
-            p = copyMetaArg(type, p, jsonValueToJSValue(qjsEngine(m_object), value));
+            // m_object may not have been exposed to the engine yet, so use the connection,
+            // which must have been and is always within the same engine
+            p = copyMetaArg(type, p, jsonValueToJSValue(qjsEngine(m_connection), value));
         } else {
             qCWarning(lcObject) << "Unknown type" << QMetaType::typeName(type) << "in JSON value conversion";
         }
