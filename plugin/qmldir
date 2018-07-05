@@ -1,2 +1,2 @@
-module qbackend
+module QBackend
 plugin qbackend
