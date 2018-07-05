@@ -14,7 +14,7 @@ void QBackendPlugin::registerTypes(const char *uri)
         {
             Q_UNUSED(engine);
             Q_UNUSED(scriptEngine);
-            return new QBackendConnection;
+            return new QBackendConnection(engine);
         }
     );
     qmlRegisterType<QBackendProcess>(uri, 1, 0, "BackendProcess");

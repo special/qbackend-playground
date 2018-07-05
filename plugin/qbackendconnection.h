@@ -6,6 +6,7 @@
 #include <QUrl>
 #include <QPointer>
 #include <QJsonObject>
+#include <QQmlEngine>
 #include <functional>
 
 #include "qbackendabstractconnection.h"
@@ -20,12 +21,17 @@ class QBackendConnection : public QBackendAbstractConnection, public QQmlParserS
     Q_PROPERTY(QBackendObject* root READ rootObject NOTIFY ready)
 
 public:
-    QBackendConnection(QObject *parent = 0);
+    QBackendConnection(QObject *parent = nullptr);
+    QBackendConnection(QQmlEngine *engine);
+
+    // When QBackendConnection is a singleton, qmlEngine/qmlContext may not always work.
+    // This will return the explicit engine as well, if one is known.
+    QQmlEngine *qmlEngine() const { return m_qmlEngine ? m_qmlEngine : ::qmlEngine(this); };
 
     QUrl url() const;
     void setUrl(const QUrl& url);
 
-    QBackendObject *rootObject() const;
+    QBackendObject *rootObject();
 
     Q_INVOKABLE QObject *object(const QByteArray &identifier) const;
     QObject *ensureObject(const QJsonObject &object);
@@ -48,10 +54,16 @@ private slots:
     void handleDataReady();
 
 private:
+    // Try qmlEngine also; this is for singletons or other contexts where engine is explicit
+    QQmlEngine *m_qmlEngine = nullptr;
+
     QUrl m_url;
     QIODevice *m_readIo = nullptr;
     QIODevice *m_writeIo = nullptr;
     QList<QByteArray> m_pendingData;
+
+    bool ensureConnectionConfig();
+    bool ensureConnectionReady();
 
     void handleMessage(const QByteArray &message);
     void write(const QJsonObject &message);

@@ -5,6 +5,8 @@
 #include <QLoggingCategory>
 #include <QLocalSocket>
 #include <QQmlEngine>
+#include <QQmlContext>
+#include <QCoreApplication>
 #include <QElapsedTimer>
 
 #include "qbackendconnection.h"
@@ -19,6 +21,12 @@ Q_LOGGING_CATEGORY(lcProtoExtreme, "backend.proto.extreme", QtWarningMsg)
 
 QBackendConnection::QBackendConnection(QObject *parent)
     : QBackendAbstractConnection(parent)
+{
+}
+
+QBackendConnection::QBackendConnection(QQmlEngine *engine)
+    : QBackendAbstractConnection()
+    , m_qmlEngine(engine)
 {
 }
 
@@ -81,8 +89,9 @@ void QBackendConnection::setUrl(const QUrl& url)
     }
 }
 
-QBackendObject *QBackendConnection::rootObject() const
+QBackendObject *QBackendConnection::rootObject()
 {
+    ensureConnectionReady();
     return m_rootObject;
 }
 
@@ -107,34 +116,84 @@ void QBackendConnection::setBackendIo(QIODevice *rd, QIODevice *wr)
     handleDataReady();
 }
 
+bool QBackendConnection::ensureConnectionConfig()
+{
+    if (!m_url.isEmpty()) {
+        return true;
+    }
+
+    // Try to setup connection from the QML context, cmdline, and environment, in that order
+    QQmlContext *context = qmlContext(this);
+    if (!context && m_qmlEngine) {
+        context = m_qmlEngine->rootContext();
+    }
+    if (context) {
+        QString url = context->contextProperty("qbackendUrl").toString();
+        if (!url.isEmpty()) {
+            qCDebug(lcConnection) << "Configuring connection URL from" << (qmlContext(this) ? "object" : "root") << "context property";
+            setUrl(url);
+            return true;
+        }
+    } else {
+        qCDebug(lcConnection) << "No context associated with connection object, skipping context configuration";
+    }
+
+    QStringList args = QCoreApplication::arguments();
+    int argp = args.indexOf("-qbackend");
+    if (argp >= 0 && argp+1 < args.size()) {
+        qCDebug(lcConnection) << "Configuring connection URL from commandline";
+        setUrl(args[argp+1]);
+        return true;
+    }
+
+    QString env = qEnvironmentVariable("QBACKEND_URL");
+    if (!env.isEmpty()) {
+        qCDebug(lcConnection) << "Configuring connection URL from environment";
+        setUrl(env);
+        return true;
+    }
+
+    return false;
+}
+
+bool QBackendConnection::ensureConnectionReady()
+{
+    if (m_rootObject)
+        return true;
+    if (!ensureConnectionConfig())
+        return false;
+    if (!m_readIo || !m_readIo->isOpen() || !m_writeIo || !m_writeIo->isOpen())
+        return false;
+
+    QElapsedTimer tm;
+    qCDebug(lcConnection) << "Blocking until backend connection is ready";
+    tm.restart();
+
+    // Flush write buffer before blocking
+    while (m_writeIo->bytesToWrite() > 0) {
+        if (!m_writeIo->waitForBytesWritten(5000))
+            break;
+    }
+
+    handleDataReady();
+    while (!m_rootObject) {
+        if (!m_readIo->waitForReadyRead(5000))
+            break;
+    }
+
+    qCDebug(lcConnection) << "Blocked for" << tm.elapsed() << "ms to initialize connection";
+    return true;
+}
+
 void QBackendConnection::classBegin()
 {
 }
 
 void QBackendConnection::componentComplete()
 {
-    if (!m_rootObject && m_readIo && m_readIo->isOpen() && m_writeIo && m_writeIo->isOpen()) {
-        // Block to wait for the connection to complete; this ensures that root is always
-        // available, and avoids a lot of ugly initialization cases for applications.
-        QElapsedTimer tm;
-        qCDebug(lcConnection) << "Blocking component complete until backend connection is established";
-        tm.restart();
-
-        // Flush write buffer before blocking
-        while (m_writeIo->bytesToWrite() > 0) {
-            if (!m_writeIo->waitForBytesWritten(5000))
-                break;
-        }
-
-        handleDataReady();
-        while (!m_rootObject) {
-            if (!m_readIo->waitForReadyRead(5000))
-                break;
-            qCDebug(lcConnection) << "waitForReadyRead returned, root object is now" << m_rootObject;
-        }
-
-        qCDebug(lcConnection) << "Blocked for" << tm.elapsed() << "ms to initialize root object";
-    }
+    // Block to wait for the connection to complete; this ensures that root is always
+    // available, and avoids a lot of ugly initialization cases for applications.
+    ensureConnectionReady();
 }
 
 /* I gift to you a brief, possibly accurate protocol description.

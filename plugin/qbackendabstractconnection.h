@@ -5,6 +5,7 @@
 #include <QProcess>
 
 class QBackendObject;
+class QQmlEngine;
 
 // Used to handle requests from the remote peer.
 // Create an instance, and associate it with a given name that will be
@@ -33,7 +34,8 @@ public:
     QBackendAbstractConnection(QObject *parent = 0);
 
 public:
-    virtual QBackendObject *rootObject() const = 0;
+    virtual QQmlEngine *qmlEngine() const = 0;
+    virtual QBackendObject *rootObject() = 0;
     virtual QObject *object(const QByteArray &identifier) const = 0;
     virtual QObject *ensureObject(const QJsonObject &object) = 0;
 
