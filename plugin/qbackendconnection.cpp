@@ -30,6 +30,24 @@ QBackendConnection::QBackendConnection(QQmlEngine *engine)
 {
 }
 
+// When QBackendConnection is a singleton, qmlEngine/qmlContext may not always work.
+// This will return the explicit engine as well, if one is known.
+QQmlEngine *QBackendConnection::qmlEngine() const
+{
+    return m_qmlEngine ? m_qmlEngine : ::qmlEngine(this);
+}
+
+void QBackendConnection::setQmlEngine(QQmlEngine *engine)
+{
+    Q_ASSERT(!m_qmlEngine);
+    if (m_qmlEngine) {
+        qCritical(lcConnection) << "Backend connection is reused by another QML engine. This will go badly.";
+        return;
+    }
+
+    m_qmlEngine = engine;
+}
+
 QUrl QBackendConnection::url() const
 {
     return m_url;

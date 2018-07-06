@@ -6,10 +6,10 @@
 #include <QUrl>
 #include <QPointer>
 #include <QJsonObject>
-#include <QQmlEngine>
 #include <functional>
 
 class QBackendObject;
+class QQmlEngine;
 
 class QBackendRemoteObject : public QObject
 {
@@ -36,9 +36,8 @@ public:
     QBackendConnection(QObject *parent = nullptr);
     QBackendConnection(QQmlEngine *engine);
 
-    // When QBackendConnection is a singleton, qmlEngine/qmlContext may not always work.
-    // This will return the explicit engine as well, if one is known.
-    QQmlEngine *qmlEngine() const { return m_qmlEngine ? m_qmlEngine : ::qmlEngine(this); };
+    QQmlEngine *qmlEngine() const;
+    void setQmlEngine(QQmlEngine *engine);
 
     QUrl url() const;
     void setUrl(const QUrl& url);
