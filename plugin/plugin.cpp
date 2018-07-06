@@ -12,14 +12,24 @@ void QBackendPlugin::registerTypes(const char *uri)
     qRegisterMetaType<QBackendModel*>();
 
     if (QByteArray(uri) == "QBackend") {
-        // The QBackend import registers a singleton connection, which is configured
-        // through properties of the root context, commandline arguments, or environment.
-        qmlRegisterSingletonType<QBackendConnection>(uri, 1, 0, "Backend",
+        qmlRegisterSingletonType<QBackendObject>(uri, 1, 0, "Backend",
             [](QQmlEngine *engine, QJSEngine *scriptEngine) -> QObject*
             {
-                Q_UNUSED(engine);
                 Q_UNUSED(scriptEngine);
-                return new QBackendConnection(engine);
+                QBackendConnection *c = new QBackendConnection(engine);
+                // This will force the connection autoconfig and synchronous initialization.
+                // If that is successful, it should return the root QBackendObject with its
+                // dynamic metaobject.
+                //
+                // This is a little sketchy, if QML relies on the type's staticMetaObject
+                // too much, but we'll find out..
+                QObject *root = c->rootObject();
+                // The rootObject has JS ownership, and we'll be returning a reference to
+                // it from this function. Even though it seems backwards, the easiest way
+                // to make sure the connection is destroyed at the proper moment is to make
+                // the root object its parent.
+                c->setParent(root);
+                return root;
             }
         );
     } else if (QByteArray(uri) == "QBackend.Connection") {
