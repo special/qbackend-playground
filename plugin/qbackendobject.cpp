@@ -18,6 +18,16 @@ Q_LOGGING_CATEGORY(lcObject, "backend.object")
 template<typename T> static void *copyMetaArg(QMetaType::Type type, void *p, const T &v);
 QJsonValue jsValueToJsonValue(const QJSValue &value);
 
+// Create a dummy staticMetaObject that provides at least the correct type name
+QMetaObject QBackendObject::staticMetaObject =
+[]() -> QMetaObject
+{
+    QMetaObjectBuilder b;
+    b.setClassName("QBackendObject");
+    b.setSuperClass(&QObject::staticMetaObject);
+    return *b.toMetaObject();
+}();
+
 QBackendObject::QBackendObject(QBackendAbstractConnection *connection, QByteArray identifier, const QJsonObject &type, QObject *parent)
     : QObject(parent)
     , d(new BackendObjectPrivate(this, connection, identifier))

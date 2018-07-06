@@ -68,7 +68,7 @@ void BackendModelPrivate::ensureModel()
     if (m_modelData)
         return;
 
-    m_modelData = m_object->property("_qb_model").value<QBackendObject*>();
+    m_modelData = m_object->property("_qb_model").value<QObject*>();
     if (!m_modelData) {
         qCWarning(lcModel) << "Missing _qb_model object on model type" << m_object->metaObject()->className();
         return;

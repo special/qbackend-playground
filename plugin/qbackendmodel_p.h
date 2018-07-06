@@ -6,8 +6,6 @@
 #include <QVector>
 #include <QJSValue>
 
-class QBackendObject;
-
 class BackendModelPrivate : public BackendObjectPrivate
 {
     Q_OBJECT
@@ -15,7 +13,7 @@ class BackendModelPrivate : public BackendObjectPrivate
 public:
     using BackendObjectPrivate::BackendObjectPrivate;
 
-    QBackendObject *m_modelData = nullptr;
+    QObject *m_modelData = nullptr;
     QStringList m_roleNames;
     QVector<QJSValue> m_rowData;
 

@@ -15,6 +15,7 @@ public:
     // an unusual path
     void resetData(const QJsonObject &data);
 
+    static QMetaObject staticMetaObject;
     virtual const QMetaObject *metaObject() const override;
     virtual int qt_metacall(QMetaObject::Call c, int id, void **argv) override;
 
