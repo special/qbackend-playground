@@ -12,6 +12,7 @@
 #include <QtCore/private/qmetaobjectbuilder_p.h>
 #include "qbackendobject.h"
 #include "qbackendobject_p.h"
+#include "qbackendconnection.h"
 
 Q_LOGGING_CATEGORY(lcObject, "backend.object")
 
@@ -28,7 +29,7 @@ QMetaObject QBackendObject::staticMetaObject =
     return *b.toMetaObject();
 }();
 
-QBackendObject::QBackendObject(QBackendAbstractConnection *connection, QByteArray identifier, const QJsonObject &type, QObject *parent)
+QBackendObject::QBackendObject(QBackendConnection *connection, QByteArray identifier, const QJsonObject &type, QObject *parent)
     : QObject(parent)
     , d(new BackendObjectPrivate(this, connection, identifier))
     , m_metaObject(d->metaObjectFromType(type))
@@ -60,7 +61,7 @@ void QBackendObject::resetData(const QJsonObject &data)
     d->resetData(data);
 }
 
-BackendObjectPrivate::BackendObjectPrivate(QObject *object, QBackendAbstractConnection *connection, const QByteArray &identifier)
+BackendObjectPrivate::BackendObjectPrivate(QObject *object, QBackendConnection *connection, const QByteArray &identifier)
     : QBackendRemoteObject(object)
     , m_object(object)
     , m_connection(connection)

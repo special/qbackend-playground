@@ -1,14 +1,14 @@
 #pragma once
 
 #include <QObject>
-#include "qbackendabstractconnection.h"
 
 class BackendObjectPrivate;
+class QBackendConnection;
 
 class QBackendObject : public QObject
 {
 public:
-    QBackendObject(QBackendAbstractConnection *connection, QByteArray identifier, const QJsonObject &type, QObject *parent = nullptr);
+    QBackendObject(QBackendConnection *connection, QByteArray identifier, const QJsonObject &type, QObject *parent = nullptr);
     virtual ~QBackendObject();
 
     // Used by QBackendConnection for "root" object data, which follows

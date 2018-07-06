@@ -20,12 +20,12 @@ Q_LOGGING_CATEGORY(lcProto, "backend.proto")
 Q_LOGGING_CATEGORY(lcProtoExtreme, "backend.proto.extreme", QtWarningMsg)
 
 QBackendConnection::QBackendConnection(QObject *parent)
-    : QBackendAbstractConnection(parent)
+    : QObject(parent)
 {
 }
 
 QBackendConnection::QBackendConnection(QQmlEngine *engine)
-    : QBackendAbstractConnection()
+    : QObject()
     , m_qmlEngine(engine)
 {
 }

@@ -9,11 +9,23 @@
 #include <QQmlEngine>
 #include <functional>
 
-#include "qbackendabstractconnection.h"
-
 class QBackendObject;
 
-class QBackendConnection : public QBackendAbstractConnection, public QQmlParserStatus
+class QBackendRemoteObject : public QObject
+{
+public:
+    QBackendRemoteObject(QObject *parent = nullptr) : QObject(parent) { }
+
+    virtual QObject *object() const = 0;
+
+    // Called when an object has been associated with the subscribed identifier
+    virtual void objectFound(const QJsonObject& object) = 0;
+
+    // Called when a method is invoked on this object
+    virtual void methodInvoked(const QString& method, const QJsonArray& params) = 0;
+};
+
+class QBackendConnection : public QObject, public QQmlParserStatus
 {
     Q_OBJECT
     Q_INTERFACES(QQmlParserStatus)
@@ -36,10 +48,10 @@ public:
     Q_INVOKABLE QObject *object(const QByteArray &identifier) const;
     QObject *ensureObject(const QJsonObject &object);
 
-    void invokeMethod(const QByteArray& identifier, const QString& method, const QJsonArray& params) override;
-    void addObjectProxy(const QByteArray& identifier, QBackendRemoteObject* object) override;
-    void removeObject(const QByteArray& identifier) override;
-    void resetObjectData(const QByteArray& identifier, bool synchronous = false) override;
+    void invokeMethod(const QByteArray& identifier, const QString& method, const QJsonArray& params);
+    void addObjectProxy(const QByteArray& identifier, QBackendRemoteObject* object);
+    void removeObject(const QByteArray& identifier);
+    void resetObjectData(const QByteArray& identifier, bool synchronous = false);
 
 signals:
     void urlChanged();

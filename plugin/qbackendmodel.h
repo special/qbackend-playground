@@ -4,8 +4,8 @@
 #include <QSortFilterProxyModel>
 #include <QJSValue>
 #include <memory>
-#include "qbackendabstractconnection.h"
 
+class QBackendConnection;
 class BackendModelPrivate;
 
 class QBackendModel : public QAbstractListModel
@@ -13,7 +13,7 @@ class QBackendModel : public QAbstractListModel
     friend class BackendModelPrivate;
 
 public:
-    QBackendModel(QBackendAbstractConnection *connection, QByteArray identifier, const QJsonObject &type, QObject *parent = nullptr);
+    QBackendModel(QBackendConnection *connection, QByteArray identifier, const QJsonObject &type, QObject *parent = nullptr);
     virtual ~QBackendModel();
 
     virtual const QMetaObject *metaObject() const override;

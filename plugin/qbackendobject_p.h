@@ -4,8 +4,7 @@
 #include <QJsonObject>
 #include <QMetaObject>
 #include <QJSValue>
-
-#include "qbackendabstractconnection.h"
+#include "qbackendconnection.h"
 
 class BackendObjectPrivate : public QBackendRemoteObject
 {
@@ -14,13 +13,13 @@ class BackendObjectPrivate : public QBackendRemoteObject
 public:
     QObject *m_object = nullptr;
 
-    QBackendAbstractConnection *m_connection = nullptr;
+    QBackendConnection *m_connection = nullptr;
     QByteArray m_identifier;
 
     QJsonObject m_dataObject;
     bool m_dataReady = false;
 
-    BackendObjectPrivate(QObject *object, QBackendAbstractConnection *connection, const QByteArray &identifier);
+    BackendObjectPrivate(QObject *object, QBackendConnection *connection, const QByteArray &identifier);
     virtual ~BackendObjectPrivate();
 
     QObject *object() const override { return m_object; }

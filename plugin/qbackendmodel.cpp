@@ -16,7 +16,7 @@ Q_LOGGING_CATEGORY(lcModel, "backend.model")
  * details on this object.
  */
 
-QBackendModel::QBackendModel(QBackendAbstractConnection *connection, QByteArray identifier, const QJsonObject &type, QObject *parent)
+QBackendModel::QBackendModel(QBackendConnection *connection, QByteArray identifier, const QJsonObject &type, QObject *parent)
     : QAbstractListModel(parent)
     , d(new BackendModelPrivate(this, connection, identifier))
     , m_metaObject(d->metaObjectFromType(type, &QAbstractListModel::staticMetaObject))
