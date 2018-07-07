@@ -131,8 +131,34 @@ void QBackendConnection::setBackendIo(QIODevice *rd, QIODevice *wr)
         m_pendingData.clear();
     }
 
-    connect(m_readIo, &QIODevice::readyRead, this, &QBackendConnection::handleDataReady);
-    handleDataReady();
+    if (!m_blockReadSignals) {
+        connect(m_readIo, &QIODevice::readyRead, this, &QBackendConnection::handleDataReady);
+        handleDataReady();
+    }
+}
+
+void QBackendConnection::blockReadSignals(bool v)
+{
+    if (v == m_blockReadSignals) {
+        return;
+    }
+    m_blockReadSignals = v;
+
+    if (v && m_readIo) {
+        disconnect(m_readIo, &QIODevice::readyRead, this, &QBackendConnection::handleDataReady);
+    } else if (!v && m_readIo) {
+        connect(m_readIo, &QIODevice::readyRead, this, &QBackendConnection::handleDataReady);
+        QMetaObject::invokeMethod(this, &QBackendConnection::handleDataReady, Qt::QueuedConnection);
+    }
+}
+
+void QBackendConnection::moveToThread(QThread *thread)
+{
+    QObject::moveToThread(thread);
+    if (m_readIo)
+        m_readIo->moveToThread(thread);
+    if (m_writeIo)
+        m_writeIo->moveToThread(thread);
 }
 
 bool QBackendConnection::ensureConnectionConfig()
@@ -220,6 +246,32 @@ bool QBackendConnection::ensureRootObject()
 // Register instantiable types with the QML engine, blocking if necessary
 void QBackendConnection::registerTypes(const char *uri)
 {
+    if (!ensureConnectionInit()) {
+        qCCritical(lcConnection) << "Connection initialization failed, cannot register types";
+        return;
+    }
+
+    // The only valid time to call this function is during a synchronous
+    // connection, exactly once, so a CREATABLE_TYPES message cannot have been
+    // handled before.
+    Q_ASSERT(m_creatableTypes.isEmpty());
+
+    QElapsedTimer tm;
+    qCDebug(lcConnection) << "Blocking to initialize creatable types";
+    tm.restart();
+
+    waitForMessage([](const QJsonObject &msg) { return msg.value("command").toString() == "CREATABLE_TYPES"; });
+
+    for (const QJsonValue &v : m_creatableTypes) {
+        QJsonObject type = v.toObject();
+        // See instantiable.h for an explanation of how this magic works
+        if (!type.value("properties").toObject().value("_qb_model").isUndefined())
+            addInstantiableBackendType<QBackendModel>(uri, this, type);
+        else
+            addInstantiableBackendType<QBackendObject>(uri, this, type);
+    }
+
+    qCDebug(lcConnection) << "Blocked for" << tm.elapsed() << "ms for creatable types";
 }
 
 void QBackendConnection::classBegin()
@@ -251,7 +303,8 @@ void QBackendConnection::componentComplete()
  *   { "command": "VERSION", ... }
  *
  * == Commands ==
- * RTFS. Backend is expected to send VERSION and ROOT immediately, in that order.
+ * RTFS. Backend is expected to send VERSION, CREATABLE_TYPES, and ROOT immediately, in
+ * that order, unconditionally.
  */
 
 void QBackendConnection::handleDataReady()
@@ -360,6 +413,8 @@ void QBackendConnection::handleMessage(const QJsonObject &cmd)
         Q_ASSERT(!m_version);
         m_version = cmd.value("version").toInt();
         qCInfo(lcConnection) << "Connected to backend version" << m_version;
+    } else if (command == "CREATABLE_TYPES") {
+        m_creatableTypes = cmd.value("types").toArray();
     } else if (command == "ROOT") {
         // The cmd object itself is a backend object structure
         if (cmd.value("identifier").toString() != QStringLiteral("root")) {

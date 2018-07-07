@@ -67,6 +67,14 @@ func (c *ProcessConnection) handle() {
 		Version int `json:"version"`
 	}{cmdMessage{"VERSION"}, 2})
 
+	c.sendMessage(struct {
+		cmdMessage
+		Types []typeInfo `json:"types"`
+	}{
+		cmdMessage{"CREATABLE_TYPES"},
+		[]typeInfo{},
+	})
+
 	// Send ROOT
 	{
 		if c.rootObject == nil {

@@ -6,6 +6,7 @@
 #include <QUrl>
 #include <QPointer>
 #include <QJsonObject>
+#include <QJsonArray>
 #include <functional>
 
 class QBackendObject;
@@ -48,11 +49,14 @@ public:
     QObject *ensureObject(const QJsonObject &object);
 
     void registerTypes(const char *uri);
+    void blockReadSignals(bool blocked);
 
     void invokeMethod(const QByteArray& identifier, const QString& method, const QJsonArray& params);
     void addObjectProxy(const QByteArray& identifier, QBackendRemoteObject* object);
     void removeObject(const QByteArray& identifier);
     void resetObjectData(const QByteArray& identifier, bool synchronous = false);
+
+    void moveToThread(QThread *thread);
 
 signals:
     void urlChanged();
@@ -75,6 +79,7 @@ private:
     QIODevice *m_writeIo = nullptr;
     QList<QByteArray> m_pendingData;
     int m_version = 0;
+    bool m_blockReadSignals = false;
 
     bool ensureConnectionConfig();
     bool ensureConnectionInit();
@@ -93,5 +98,6 @@ private:
     // Hash of identifier -> proxy object for all existing objects
     QHash<QByteArray,QBackendRemoteObject*> m_objects;
     QBackendObject *m_rootObject = nullptr;
+    QJsonArray m_creatableTypes;
 };
 

@@ -20,6 +20,19 @@ void QBackendPlugin::registerTypes(const char *uri)
         // available, which happens from the singleton callback.
         Q_ASSERT(!singleConnection);
         singleConnection = new QBackendConnection;
+
+        // This is delicate, but I think it's safe.
+        //
+        // This is executing on the QML type loader thread right now. The connection needs
+        // to be moved after the type registration, along with its QIODevices.
+        //
+        // This is carefully possible by blocking the readyRead signals, doing the
+        // synchronous type setup, and then moving the connection along with its children
+        // to the main thread. Read signals are then unblocked once the QML engine is
+        // available and it's safe to instantiate the root object.
+        singleConnection->blockReadSignals(true);
+        // registerTypes will synchronously figure out configuration, make the connection,
+        // wait for the types message, and register those with qmlRegisterType.
         singleConnection->registerTypes(uri);
         singleConnection->moveToThread(QCoreApplication::instance()->thread());
 
@@ -27,13 +40,11 @@ void QBackendPlugin::registerTypes(const char *uri)
             [](QQmlEngine *engine, QJSEngine *scriptEngine) -> QObject*
             {
                 Q_UNUSED(scriptEngine);
+                // The root object and other initialization can't take place until there is
+                // a qml engine, so these are still blocked at this point.
                 singleConnection->setQmlEngine(engine);
-                // This will force the connection autoconfig and synchronous initialization.
-                // If that is successful, it should return the root QBackendObject with its
-                // dynamic metaobject.
-                //
-                // This is a little sketchy, if QML relies on the type's staticMetaObject
-                // too much, but we'll find out..
+                singleConnection->blockReadSignals(false);
+
                 QObject *root = singleConnection->rootObject();
                 // The rootObject has JS ownership, and we'll be returning a reference to
                 // it from this function. Even though it seems backwards, the easiest way
