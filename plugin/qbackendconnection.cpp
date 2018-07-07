@@ -110,7 +110,7 @@ void QBackendConnection::setUrl(const QUrl& url)
 
 QBackendObject *QBackendConnection::rootObject()
 {
-    ensureConnectionReady();
+    ensureRootObject();
     return m_rootObject;
 }
 
@@ -175,9 +175,9 @@ bool QBackendConnection::ensureConnectionConfig()
     return false;
 }
 
-bool QBackendConnection::ensureConnectionReady()
+bool QBackendConnection::ensureConnectionInit()
 {
-    if (m_rootObject)
+    if (m_version)
         return true;
     if (!ensureConnectionConfig())
         return false;
@@ -188,20 +188,33 @@ bool QBackendConnection::ensureConnectionReady()
     qCDebug(lcConnection) << "Blocking until backend connection is ready";
     tm.restart();
 
-    // Flush write buffer before blocking
-    while (m_writeIo->bytesToWrite() > 0) {
-        if (!m_writeIo->waitForBytesWritten(5000))
-            break;
-    }
-
-    handleDataReady();
-    while (!m_rootObject) {
-        if (!m_readIo->waitForReadyRead(5000))
-            break;
-    }
+    waitForMessage([](const QJsonObject &msg) { return msg.value("command").toString() == "VERSION"; });
 
     qCDebug(lcConnection) << "Blocked for" << tm.elapsed() << "ms to initialize connection";
-    return true;
+    return m_version;
+}
+
+bool QBackendConnection::ensureRootObject()
+{
+    if (!ensureConnectionInit())
+        return false;
+    if (m_rootObject)
+        return true;
+
+    Q_ASSERT(qmlEngine());
+    if (!qmlEngine()) {
+        qCCritical(lcConnection) << "Connection cannot build root object without a QML engine";
+        return false;
+    }
+
+    QElapsedTimer tm;
+    qCDebug(lcConnection) << "Blocking until root object is ready";
+    tm.restart();
+
+    waitForMessage([](const QJsonObject &msg) { return msg.value("command").toString() == "ROOT"; });
+
+    qCDebug(lcConnection) << "Blocked for" << tm.elapsed() << "ms for root object";
+    return (bool)m_rootObject;
 }
 
 // Register instantiable types with the QML engine, blocking if necessary
@@ -217,7 +230,7 @@ void QBackendConnection::componentComplete()
 {
     // Block to wait for the connection to complete; this ensures that root is always
     // available, and avoids a lot of ugly initialization cases for applications.
-    ensureConnectionReady();
+    ensureRootObject();
 }
 
 /* I gift to you a brief, possibly accurate protocol description.
@@ -344,7 +357,9 @@ void QBackendConnection::handleMessage(const QJsonObject &cmd)
     }
 
     if (command == "VERSION") {
-        qCInfo(lcConnection) << "Connected to backend version " << cmd.value("version");
+        Q_ASSERT(!m_version);
+        m_version = cmd.value("version").toInt();
+        qCInfo(lcConnection) << "Connected to backend version" << m_version;
     } else if (command == "ROOT") {
         // The cmd object itself is a backend object structure
         if (cmd.value("identifier").toString() != QStringLiteral("root")) {

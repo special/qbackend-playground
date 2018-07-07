@@ -74,9 +74,11 @@ private:
     QIODevice *m_readIo = nullptr;
     QIODevice *m_writeIo = nullptr;
     QList<QByteArray> m_pendingData;
+    int m_version = 0;
 
     bool ensureConnectionConfig();
-    bool ensureConnectionReady();
+    bool ensureConnectionInit();
+    bool ensureRootObject();
 
     void handleMessage(const QByteArray &message);
     void handleMessage(const QJsonObject &message);
