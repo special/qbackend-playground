@@ -47,6 +47,8 @@ public:
     Q_INVOKABLE QObject *object(const QByteArray &identifier) const;
     QObject *ensureObject(const QJsonObject &object);
 
+    void registerTypes(const char *uri);
+
     void invokeMethod(const QByteArray& identifier, const QString& method, const QJsonArray& params);
     void addObjectProxy(const QByteArray& identifier, QBackendRemoteObject* object);
     void removeObject(const QByteArray& identifier);

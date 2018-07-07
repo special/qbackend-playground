@@ -12,6 +12,7 @@
 #include "qbackendconnection.h"
 #include "qbackendobject.h"
 #include "qbackendmodel.h"
+#include "instantiable.h"
 
 // #define PROTO_DEBUG
 
@@ -201,6 +202,11 @@ bool QBackendConnection::ensureConnectionReady()
 
     qCDebug(lcConnection) << "Blocked for" << tm.elapsed() << "ms to initialize connection";
     return true;
+}
+
+// Register instantiable types with the QML engine, blocking if necessary
+void QBackendConnection::registerTypes(const char *uri)
+{
 }
 
 void QBackendConnection::classBegin()

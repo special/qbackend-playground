@@ -29,4 +29,5 @@ HEADERS += \
     qbackendobject.h \
     qbackendobject_p.h \
     qbackendmodel.h \
-    qbackendmodel_p.h
+    qbackendmodel_p.h \
+    instantiable.h

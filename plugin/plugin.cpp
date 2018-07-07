@@ -20,6 +20,7 @@ void QBackendPlugin::registerTypes(const char *uri)
         // available, which happens from the singleton callback.
         Q_ASSERT(!singleConnection);
         singleConnection = new QBackendConnection;
+        singleConnection->registerTypes(uri);
         singleConnection->moveToThread(QCoreApplication::instance()->thread());
 
         qmlRegisterSingletonType<QBackendObject>(uri, 1, 0, "Backend",
