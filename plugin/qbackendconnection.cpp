@@ -296,7 +296,8 @@ void QBackendConnection::handleDataReady()
     }
 }
 
-void QBackendConnection::handleMessage(const QByteArray &message) {
+void QBackendConnection::handleMessage(const QByteArray &message)
+{
 #if defined(PROTO_DEBUG)
     qCDebug(lcProto) << "Read " << message;
 #endif
@@ -307,7 +308,12 @@ void QBackendConnection::handleMessage(const QByteArray &message) {
         qCWarning(lcProto) << "bad message:" << message << pe.errorString();
         return;
     }
-    QJsonObject cmd = json.object();
+
+    handleMessage(json.object());
+}
+
+void QBackendConnection::handleMessage(const QJsonObject &cmd)
+{
     QString command = cmd.value("command").toString();
 
     // If there is a syncCallback, call it to see if this is the message it wants.
@@ -316,13 +322,25 @@ void QBackendConnection::handleMessage(const QByteArray &message) {
     //
     // If there is a syncResult, always queue the message.
     if ((m_syncCallback && !m_syncCallback(cmd)) || !m_syncResult.isEmpty()) {
-        qCDebug(lcConnection) << "Queuing handling of unrelated message during waitForMessage";
-        QMetaObject::invokeMethod(this, [=]() { handleMessage(message); }, Qt::QueuedConnection);
+        qCDebug(lcConnection) << "Queuing handling of unrelated" << command << "during waitForMessage";
+        if (m_pendingMessages.isEmpty()) {
+            QMetaObject::invokeMethod(this, &QBackendConnection::handlePendingMessages, Qt::QueuedConnection);
+        }
+        m_pendingMessages.append(cmd);
         return;
     }
+
     if (m_syncCallback) {
+        // Reset callback, set result, and handle immediately, bypassing the queue
+        // even if out of order; see waitForMessage for details.
         m_syncCallback = nullptr;
         m_syncResult = cmd;
+    } else if (!m_pendingMessages.isEmpty()) {
+        // Other messages are pending, so queue this one as well
+        qCDebug(lcConnection) << "Queuing handling of" << command << "into non-empty message queue";
+        // In this case, there's no need to trigger the handler later; something already has
+        m_pendingMessages.append(cmd);
+        return;
     }
 
     if (command == "VERSION") {
@@ -362,6 +380,20 @@ void QBackendConnection::handleMessage(const QByteArray &message) {
     }
 }
 
+void QBackendConnection::handlePendingMessages()
+{
+    const auto pending = m_pendingMessages;
+    m_pendingMessages.clear();
+    if (pending.isEmpty()) {
+        return;
+    }
+
+    qCDebug(lcConnection) << "Handling" << pending.size() << "queued messages";
+    for (const QJsonObject &msg : pending) {
+        handleMessage(msg);
+    }
+}
+
 void QBackendConnection::write(const QJsonObject &message)
 {
     QByteArray data = QJsonDocument(message).toJson(QJsonDocument::Compact);
@@ -385,6 +417,9 @@ void QBackendConnection::write(const QJsonObject &message)
 // Any other messages (returning false from the callback) will be queued to handle normally
 // later. They will not have been handled when this function returns; the selected message is
 // taken out of order.
+//
+// waitForMessage is safe to call recursively (for different messages), even if those messages
+// arrive out of order.
 QJsonObject QBackendConnection::waitForMessage(std::function<bool(const QJsonObject&)> callback)
 {
     // Flush write buffer before blocking
@@ -396,11 +431,17 @@ QJsonObject QBackendConnection::waitForMessage(std::function<bool(const QJsonObj
     Q_ASSERT(!m_syncCallback);
     Q_ASSERT(m_syncResult.isEmpty());
     m_syncCallback = callback;
+
+    // Flush pending messages, in case one of these is matched by the callback.
+    // If not, they will be queued again because m_syncCallback is set.
+    handlePendingMessages();
+
     while (m_syncResult.isEmpty()) {
         if (!m_readIo->waitForReadyRead(5000))
             break;
-        handleDataReady(); // XXX but why?
+        handleDataReady();
     }
+
     QJsonObject re = m_syncResult;
     m_syncResult = QJsonObject();
     return re;

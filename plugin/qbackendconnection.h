@@ -79,9 +79,12 @@ private:
     bool ensureConnectionReady();
 
     void handleMessage(const QByteArray &message);
+    void handleMessage(const QJsonObject &message);
+    void handlePendingMessages();
     void write(const QJsonObject &message);
 
     QJsonObject waitForMessage(std::function<bool(const QJsonObject&)> callback);
+    QList<QJsonObject> m_pendingMessages;
     std::function<bool(const QJsonObject&)> m_syncCallback;
     QJsonObject m_syncResult;
 
