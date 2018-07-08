@@ -6,9 +6,17 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"strconv"
 	"time"
 )
+
+type instantiableFactory func() QObject
+
+type instantiableType struct {
+	Type    *typeInfo
+	Factory instantiableFactory
+}
 
 // ProcessConnection implements the Connection interface to communicate
 // with a frontend parent process over stdin/stdout.
@@ -18,6 +26,9 @@ type ProcessConnection struct {
 	objects    map[string]QObject
 	rootObject QObject
 
+	instantiable map[string]instantiableType
+
+	started       bool
 	processSignal chan struct{}
 	queue         chan []byte
 }
@@ -27,10 +38,10 @@ func NewProcessConnection(in io.ReadCloser, out io.WriteCloser) *ProcessConnecti
 		in:            in,
 		out:           out,
 		objects:       make(map[string]QObject),
+		instantiable:  make(map[string]instantiableType),
 		processSignal: make(chan struct{}, 2),
 		queue:         make(chan []byte, 128),
 	}
-	go c.handle()
 	return c
 }
 
@@ -67,13 +78,20 @@ func (c *ProcessConnection) handle() {
 		Version int `json:"version"`
 	}{cmdMessage{"VERSION"}, 2})
 
-	c.sendMessage(struct {
-		cmdMessage
-		Types []typeInfo `json:"types"`
-	}{
-		cmdMessage{"CREATABLE_TYPES"},
-		[]typeInfo{},
-	})
+	{
+		types := make([]*typeInfo, 0, len(c.instantiable))
+		for _, t := range c.instantiable {
+			types = append(types, t.Type)
+		}
+
+		c.sendMessage(struct {
+			cmdMessage
+			Types []*typeInfo `json:"types"`
+		}{
+			cmdMessage{"CREATABLE_TYPES"},
+			types,
+		})
+	}
 
 	// Send ROOT
 	{
@@ -133,7 +151,15 @@ func (c *ProcessConnection) handle() {
 	}
 }
 
+func (c *ProcessConnection) ensureHandler() {
+	if !c.started {
+		c.started = true
+		go c.handle()
+	}
+}
+
 func (c *ProcessConnection) Run() error {
+	c.ensureHandler()
 	for {
 		if _, open := <-c.processSignal; !open {
 			return nil
@@ -147,6 +173,7 @@ func (c *ProcessConnection) Run() error {
 }
 
 func (c *ProcessConnection) Process() error {
+	c.ensureHandler()
 	lastCollection := time.Now()
 
 	for {
@@ -182,6 +209,21 @@ func (c *ProcessConnection) Process() error {
 				c.sendUpdate(obj)
 			}
 
+		case "OBJECT_CREATE":
+			if _, exists := c.objects[msg["identifier"].(string)]; exists {
+				// Duplicate object identifier..
+				continue
+			}
+
+			if t, ok := c.instantiable[msg["typeName"].(string)]; !ok {
+				// Unknown type
+				continue
+			} else {
+				obj := t.Factory()
+				initObjectId(obj, c, msg["identifier"].(string))
+				objectImplFor(obj).Ref = true
+			}
+
 		case "INVOKE":
 			obj, exists := c.objects[msg["identifier"].(string)]
 			if !exists {
@@ -214,6 +256,7 @@ func (c *ProcessConnection) Process() error {
 }
 
 func (c *ProcessConnection) ProcessSignal() <-chan struct{} {
+	c.ensureHandler()
 	return c.processSignal
 }
 
@@ -300,5 +343,27 @@ func (c *ProcessConnection) sendEmit(obj QObject, method string, data []interfac
 		Method     string        `json:"method"`
 		Parameters []interface{} `json:"parameters"`
 	}{cmdMessage{"EMIT"}, obj.Identifier(), method, data})
+	return nil
+}
+
+func (c *ProcessConnection) RegisterInstantiableType(name string, t QObject, factory func() QObject) error {
+	if c.started {
+		return fmt.Errorf("Type '%s' must be registered before the connection starts")
+	} else if len(c.instantiable) >= 10 {
+		return fmt.Errorf("Type '%s' exceeds maximum of 10 instantiable types", name)
+	} else if _, exists := c.instantiable[name]; exists {
+		return fmt.Errorf("Type '%s' is already registered", name)
+	}
+
+	typeinfo, err := parseType(reflect.TypeOf(t))
+	if err != nil {
+		return err
+	}
+	typeinfo.Name = name
+
+	c.instantiable[name] = instantiableType{
+		Type:    typeinfo,
+		Factory: factory,
+	}
 	return nil
 }

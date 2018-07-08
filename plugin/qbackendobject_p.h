@@ -20,6 +20,7 @@ public:
     bool m_dataReady = false;
 
     BackendObjectPrivate(QObject *object, QBackendConnection *connection, const QByteArray &identifier);
+    BackendObjectPrivate(const char *typeName, QObject *object, QBackendConnection *connection);
     virtual ~BackendObjectPrivate();
 
     QObject *object() const override { return m_object; }
@@ -29,8 +30,8 @@ public:
 
     int metacall(QMetaObject::Call c, int id, void **argv);
 
-    QMetaObject *metaObjectFromType(const QJsonObject &type, const QMetaObject *superClass = nullptr);
-    std::pair<QString,QString> qtTypesFromType(const QString &type);
     void *jsonValueToMetaArgs(QMetaType::Type type, const QJsonValue &value, void *p = nullptr);
     QJSValue jsonValueToJSValue(QJSEngine *engine, const QJsonValue &value);
 };
+
+QMetaObject *metaObjectFromType(const QJsonObject &type, const QMetaObject *superClass = nullptr);

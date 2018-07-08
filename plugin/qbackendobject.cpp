@@ -9,6 +9,7 @@
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QJSValueIterator>
+#include <QUuid>
 #include <QtCore/private/qmetaobjectbuilder_p.h>
 #include "qbackendobject.h"
 #include "qbackendobject_p.h"
@@ -32,7 +33,13 @@ QMetaObject QBackendObject::staticMetaObject =
 QBackendObject::QBackendObject(QBackendConnection *connection, QByteArray identifier, const QJsonObject &type, QObject *parent)
     : QObject(parent)
     , d(new BackendObjectPrivate(this, connection, identifier))
-    , m_metaObject(d->metaObjectFromType(type))
+    , m_metaObject(metaObjectFromType(type))
+{
+}
+
+QBackendObject::QBackendObject(QBackendConnection *connection, QMetaObject *type)
+    : d(new BackendObjectPrivate(type->className(), this, connection))
+    , m_metaObject(type)
 {
 }
 
@@ -68,6 +75,16 @@ BackendObjectPrivate::BackendObjectPrivate(QObject *object, QBackendConnection *
     , m_identifier(identifier)
 {
     connection->addObjectProxy(identifier, this);
+}
+
+BackendObjectPrivate::BackendObjectPrivate(const char *typeName, QObject *object, QBackendConnection *connection)
+    : QBackendRemoteObject(object)
+    , m_object(object)
+    , m_connection(connection)
+{
+    // Newly instantiated object, generate an identifier
+    m_identifier = QUuid::createUuid().toString().toUtf8();
+    connection->addObjectInstantiated(typeName, m_identifier, this);
 }
 
 BackendObjectPrivate::~BackendObjectPrivate()
@@ -357,6 +374,27 @@ void *BackendObjectPrivate::jsonValueToMetaArgs(QMetaType::Type type, const QJso
     return p;
 }
 
+// Qt, QML
+std::pair<QString,QString> qtTypesFromType(const QString &type)
+{
+    if (type == "string")
+        return {"QString","string"};
+    else if (type == "int")
+        return {"int","int"};
+    else if (type == "double")
+        return {"double","double"};
+    else if (type == "bool")
+        return {"bool","bool"};
+    else if (type == "object")
+        return {"QObject*","var"};
+    else if (type == "array")
+        return {"QJSValue","var"};
+    else if (type == "map")
+        return {"QJSValue","var"};
+    else
+        return {"QJSValue","var"};
+}
+
 /* Type definitions:
  *
  * {
@@ -398,7 +436,7 @@ void *BackendObjectPrivate::jsonValueToMetaArgs(QMetaType::Type type, const QJso
  */
 
 // XXX error handling
-QMetaObject *BackendObjectPrivate::metaObjectFromType(const QJsonObject &type, const QMetaObject *superClass)
+QMetaObject *metaObjectFromType(const QJsonObject &type, const QMetaObject *superClass)
 {
     QMetaObjectBuilder b;
     b.setClassName(type.value("name").toString().toUtf8());
@@ -462,26 +500,5 @@ QMetaObject *BackendObjectPrivate::metaObjectFromType(const QJsonObject &type, c
     }
 
     return b.toMetaObject();
-}
-
-// Qt, QML
-std::pair<QString,QString> BackendObjectPrivate::qtTypesFromType(const QString &type)
-{
-    if (type == "string")
-        return {"QString","string"};
-    else if (type == "int")
-        return {"int","int"};
-    else if (type == "double")
-        return {"double","double"};
-    else if (type == "bool")
-        return {"bool","bool"};
-    else if (type == "object")
-        return {"QObject*","var"};
-    else if (type == "array")
-        return {"QJSValue","var"};
-    else if (type == "map")
-        return {"QJSValue","var"};
-    else
-        return {"QJSValue","var"};
 }
 

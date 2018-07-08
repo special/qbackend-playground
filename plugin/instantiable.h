@@ -4,6 +4,7 @@
 #include <QJsonObject>
 #include <QQmlEngine>
 #include <QtCore/private/qmetaobjectbuilder_p.h>
+#include "qbackendobject_p.h"
 
 Q_DECLARE_LOGGING_CATEGORY(lcConnection)
 
@@ -38,25 +39,29 @@ public:
         m_connection = connection;
         m_type = type;
 
-        QMetaObjectBuilder b;
-        b.setClassName(type.value("name").toString().toUtf8());
-        b.setSuperClass(&T::staticMetaObject);
-        staticMetaObject = *b.toMetaObject();
+        staticMetaObject = *metaObjectFromType(type, &T::staticMetaObject);
 
-        qmlRegisterType<InstantiableBackendType<T,I>>(uri, 1, 0, b.className());
-        qCDebug(lcConnection) << "Registered instantiable type" << b.className();
+        qmlRegisterType<InstantiableBackendType<T,I>>(uri, 1, 0, staticMetaObject.className());
+        qCDebug(lcConnection) << "Registered instantiable type" << staticMetaObject.className();
     }
 
     InstantiableBackendType()
-        : T(m_connection, QByteArray("XXX"), m_type)
+        : T(m_connection, instanceMetaObject())
     {
         Q_ASSERT(m_connection);
-        qCDebug(lcConnection) << "Constructed an InstantiableBackendType" << staticMetaObject.className() << "(index" << I << ")";
+        qCDebug(lcConnection) << "Constructed an instantiable" << staticMetaObject.className() << "with id" << this->property("_qb_identifier").toString();
     }
 
 private:
     static QBackendConnection *m_connection;
     static QJsonObject m_type;
+
+    QMetaObject *instanceMetaObject()
+    {
+        QMetaObjectBuilder b(&staticMetaObject);
+        b.setSuperClass(&T::staticMetaObject);
+        return b.toMetaObject();
+    }
 };
 
 template<typename T, int I> QMetaObject InstantiableBackendType<T,I>::staticMetaObject;

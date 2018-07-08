@@ -53,6 +53,7 @@ public:
 
     void invokeMethod(const QByteArray& identifier, const QString& method, const QJsonArray& params);
     void addObjectProxy(const QByteArray& identifier, QBackendRemoteObject* object);
+    void addObjectInstantiated(const QString &typeName, const QByteArray& identifier, QBackendRemoteObject* object);
     void removeObject(const QByteArray& identifier);
     void resetObjectData(const QByteArray& identifier, bool synchronous = false);
 

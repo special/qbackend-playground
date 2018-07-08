@@ -19,10 +19,12 @@ public:
     virtual const QMetaObject *metaObject() const override;
     virtual int qt_metacall(QMetaObject::Call c, int id, void **argv) override;
 
-protected:
     QHash<int, QByteArray> roleNames() const override;
     int rowCount(const QModelIndex&) const override;
     QVariant data(const QModelIndex &index, int role) const override;
+
+protected:
+    QBackendModel(QBackendConnection *connection, QMetaObject *type);
 
 private:
     BackendModelPrivate *d;

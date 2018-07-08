@@ -544,6 +544,16 @@ void QBackendConnection::addObjectProxy(const QByteArray& identifier, QBackendRe
     });
 }
 
+void QBackendConnection::addObjectInstantiated(const QString &typeName, const QByteArray &identifier, QBackendRemoteObject *proxy)
+{
+    m_objects.insert(identifier, proxy);
+    write(QJsonObject{
+          {"command", "OBJECT_CREATE"},
+          {"typeName", typeName},
+          {"identifier", QString::fromUtf8(identifier)}
+    });
+}
+
 void QBackendConnection::resetObjectData(const QByteArray& identifier, bool synchronous)
 {
     write(QJsonObject{{"command", "OBJECT_QUERY"}, {"identifier", QString::fromUtf8(identifier)}});

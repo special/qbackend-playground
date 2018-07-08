@@ -36,4 +36,6 @@ type Connection interface {
 	// InitObject can be useful to guarantee that the QObject (and signals) are always
 	// usable.
 	InitObject(object QObject) error
+
+	RegisterInstantiableType(name string, t QObject, factory func() QObject) error
 }

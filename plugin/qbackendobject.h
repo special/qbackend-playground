@@ -19,6 +19,9 @@ public:
     virtual const QMetaObject *metaObject() const override;
     virtual int qt_metacall(QMetaObject::Call c, int id, void **argv) override;
 
+protected:
+    QBackendObject(QBackendConnection *connection, QMetaObject *type);
+
 private:
     BackendObjectPrivate *d;
     QMetaObject *m_metaObject = nullptr;
