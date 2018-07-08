@@ -176,6 +176,22 @@ int BackendObjectPrivate::metacall(QMetaObject::Call c, int id, void **argv)
         }
 
         id -= count;
+    } else if (c == QMetaObject::WriteProperty) {
+        int count = metaObject->propertyCount() - metaObject->propertyOffset();
+        QMetaProperty property = metaObject->property(id + metaObject->propertyOffset());
+
+        // Look for a corresponding setter method
+        QString setSig = QString("set%1(%2)").arg(property.name()).arg(property.typeName());
+        setSig[3] = setSig[3].toUpper();
+        int methodIndex = metaObject->indexOfMethod(setSig.toUtf8());
+
+        if (methodIndex >= 0) {
+            // Turn this into an InvokeMetaMethod of the setter
+            void *mArgv[] = { nullptr, argv[0] };
+            metacall(QMetaObject::InvokeMetaMethod, methodIndex - metaObject->methodOffset(), mArgv);
+        }
+
+        id -= count;
     } else if (c == QMetaObject::InvokeMetaMethod) {
         int count = metaObject->methodCount() - metaObject->methodOffset();
         QMetaMethod method = metaObject->method(id + metaObject->methodOffset());
@@ -443,14 +459,16 @@ QMetaObject *metaObjectFromType(const QJsonObject &type, const QMetaObject *supe
     if (superClass)
         b.setSuperClass(superClass);
 
-    b.addProperty("_qb_identifier", "QString");
+    b.addProperty("_qb_identifier", "QString").setConstant(true);
 
     qCDebug(lcObject) << "Building metaobject for type:" << type;
 
     QJsonObject properties = type.value("properties").toObject();
     for (auto it = properties.constBegin(); it != properties.constEnd(); it++) {
         qCDebug(lcObject) << " -- property:" << it.key() << it.value().toString();
-        b.addProperty(it.key().toUtf8(), qtTypesFromType(it.value().toString()).first.toUtf8());
+        auto p = b.addProperty(it.key().toUtf8(), qtTypesFromType(it.value().toString()).first.toUtf8());
+        // Properties with a matching set* method are marked as writable below
+        p.setWritable(false);
     }
 
     QJsonObject signalsObj = type.value("signals").toObject();
@@ -483,9 +501,7 @@ QMetaObject *metaObjectFromType(const QJsonObject &type, const QMetaObject *supe
 
     QJsonObject methods = type.value("methods").toObject();
     for (auto it = methods.constBegin(); it != methods.constEnd(); it++) {
-        // XXX lots of things also
         QString name = it.key();
-        // XXX can't just go changing this..
         QString signature = name + "(";
         QJsonArray paramTypes = it.value().toArray();
         for (const QJsonValue &type : paramTypes) {
@@ -497,6 +513,18 @@ QMetaObject *metaObjectFromType(const QJsonObject &type, const QMetaObject *supe
         signature += ")";
         qCDebug(lcObject) << " -- method:" << name << signature;
         b.addMethod(signature.toUtf8());
+
+        if (name.startsWith("set") && paramTypes.size() == 1) {
+            QString propName = name.mid(3);
+            if (!propName.isEmpty()) {
+                propName[0] = propName[0].toLower();
+            }
+            int propIndex = b.indexOfProperty(propName.toUtf8());
+            if (propIndex >= 0) {
+                b.property(propIndex).setWritable(true);
+                qCDebug(lcObject) << " -- -- writing property" << propIndex;
+            }
+        }
     }
 
     return b.toMetaObject();
