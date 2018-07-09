@@ -330,6 +330,15 @@ func (o *objectImpl) Emit(signal string, args ...interface{}) {
 	if !o.Referenced() {
 		return
 	}
+
+	// These arguments go through a plain MarshalJSON from the connection, since they
+	// are not being sent as part of an object. The scan to initialize QObjects in
+	// this tree needs to happen here.
+	if _, err := o.initObjectsUnder(reflect.ValueOf(args)); err != nil {
+		// XXX report error
+		return
+	}
+
 	o.C.(*ProcessConnection).sendEmit(o.Object.(QObject), signal, args)
 }
 
