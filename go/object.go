@@ -459,10 +459,10 @@ func (o *objectImpl) MarshalObject() (map[string]interface{}, error) {
 // This scan also maintains the list of object IDs referenced within this
 // object, which is returned here and stored as refChildren.
 func (o *objectImpl) initObjectsUnder(v reflect.Value) ([]string, error) {
-	for v.Kind() == reflect.Ptr {
-		v = reflect.Indirect(v)
+	for v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface {
+		v = v.Elem()
 		if !v.IsValid() {
-			// nil pointer
+			// nil pointer/interface
 			return nil, nil
 		}
 	}
@@ -497,9 +497,6 @@ func (o *objectImpl) initObjectsUnder(v reflect.Value) ([]string, error) {
 				refs = append(refs, elemRefs...)
 			}
 		}
-
-	case reflect.Interface:
-		panic("QObject initialization through interfaces is not implemented yet") // XXX
 
 	case reflect.Struct:
 		if newObj, err := initObject(v.Addr().Interface(), o.C); err == nil {
