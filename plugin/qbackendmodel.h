@@ -2,13 +2,14 @@
 
 #include <QAbstractListModel>
 #include <QSortFilterProxyModel>
+#include <QQmlParserStatus>
 #include <QJSValue>
 #include <memory>
 
 class QBackendConnection;
 class BackendModelPrivate;
 
-class QBackendModel : public QAbstractListModel
+class QBackendModel : public QAbstractListModel, public QQmlParserStatus
 {
     friend class BackendModelPrivate;
 
@@ -22,6 +23,9 @@ public:
     QHash<int, QByteArray> roleNames() const override;
     int rowCount(const QModelIndex&) const override;
     QVariant data(const QModelIndex &index, int role) const override;
+
+    void classBegin() override;
+    void componentComplete() override;
 
 protected:
     QBackendModel(QBackendConnection *connection, QMetaObject *type);

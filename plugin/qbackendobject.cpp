@@ -63,6 +63,15 @@ int QBackendObject::qt_metacall(QMetaObject::Call c, int id, void **argv)
     return d->metacall(c, id, argv);
 }
 
+void QBackendObject::classBegin()
+{
+}
+
+void QBackendObject::componentComplete()
+{
+    d->componentComplete();
+}
+
 void QBackendObject::resetData(const QJsonObject &data)
 {
     d->resetData(data);
@@ -128,6 +137,16 @@ void BackendObjectPrivate::methodInvoked(const QString &name, const QJsonArray &
             QMetaType::destroy(method.parameterType(j), argv[j+1]);
 
         break;
+    }
+}
+
+void BackendObjectPrivate::componentComplete()
+{
+    // Will silently fail if the method isn't implemented
+    const QMetaObject *metaObject = m_object->metaObject();
+    int idx = metaObject->indexOfMethod("componentComplete()");
+    if (idx >= 0) {
+        metaObject->method(idx).invoke(m_object);
     }
 }
 

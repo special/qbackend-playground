@@ -49,6 +49,15 @@ int QBackendModel::qt_metacall(QMetaObject::Call c, int id, void **argv)
     return d->metacall(c, id, argv);
 }
 
+void QBackendModel::classBegin()
+{
+}
+
+void QBackendModel::componentComplete()
+{
+    d->componentComplete();
+}
+
 /* The _qb_model object must implement:
  *
  * {
