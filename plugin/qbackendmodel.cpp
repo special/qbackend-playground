@@ -158,10 +158,12 @@ void BackendModelPrivate::doInsert(int start, const QJSValue &data)
         return;
 
     model()->beginInsertRows(QModelIndex(), start, start + size - 1);
-    m_rowData.insert(start, size, QJSValue());
+    auto rowsAfter = m_rowData.mid(start+size);
+    m_rowData.resize(start);
     for (int i = 0; i < size; i++) {
-        m_rowData[start+i] = data.property(i);
+        m_rowData.append(data.property(i));
     }
+    m_rowData.append(rowsAfter);
     model()->endInsertRows();
 }
 
@@ -183,7 +185,6 @@ void BackendModelPrivate::doMove(int start, int end, int destination)
     m_rowData.insert(destination, rows.size(), QJSValue());
     std::copy_n(rows.begin(), rows.size(), m_rowData.begin()+destination);
     model()->endMoveRows();
-
 }
 
 void BackendModelPrivate::doUpdate(int row, const QJSValue &data)
