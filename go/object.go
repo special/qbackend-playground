@@ -27,7 +27,7 @@ type QObject interface {
 	json.Marshaler
 	MarshalObject() (map[string]interface{}, error)
 
-	Connection() Connection
+	Connection() *Connection
 	Identifier() string
 	// Referenced returns true when there is a client-side reference to
 	// this object. When false, all signals are ignored and the object
@@ -102,7 +102,7 @@ func objectImplFor(obj interface{}) *objectImpl {
 }
 
 type objectImpl struct {
-	C        Connection
+	C        *Connection
 	Id       string
 	Ref      bool
 	Inactive bool
@@ -120,12 +120,12 @@ type objectImpl struct {
 
 var errNotQObject = errors.New("Struct does not embed QObject")
 
-func initObject(object interface{}, c Connection) (QObject, error) {
+func initObject(object interface{}, c *Connection) (QObject, error) {
 	u, _ := uuid.NewV4()
 	return initObjectId(object, c, u.String())
 }
 
-func initObjectId(object interface{}, c Connection, id string) (QObject, error) {
+func initObjectId(object interface{}, c *Connection, id string) (QObject, error) {
 	var impl *objectImpl
 	var newObject bool
 
@@ -168,7 +168,7 @@ func initObjectId(object interface{}, c Connection, id string) (QObject, error) 
 
 	// Register with connection
 	if c != nil {
-		c.(*ProcessConnection).addObject(object.(QObject))
+		c.addObject(object.(QObject))
 	}
 
 	// Call InitObject for new objects if implemented
@@ -213,7 +213,7 @@ func (o *objectImpl) refsChanged() {
 	}
 }
 
-func (o *objectImpl) Connection() Connection {
+func (o *objectImpl) Connection() *Connection {
 	return o.C
 }
 func (o *objectImpl) Identifier() string {
@@ -339,7 +339,7 @@ func (o *objectImpl) Emit(signal string, args ...interface{}) {
 		return
 	}
 
-	o.C.(*ProcessConnection).sendEmit(o.Object.(QObject), signal, args)
+	o.C.sendEmit(o.Object.(QObject), signal, args)
 }
 
 func (o *objectImpl) emitReflected(signal string, args []reflect.Value) {
@@ -360,7 +360,7 @@ func (o *objectImpl) ResetProperties() {
 	if !o.Referenced() {
 		return
 	}
-	o.C.(*ProcessConnection).sendUpdate(o)
+	o.C.sendUpdate(o)
 }
 
 // Unfortunately, even though this method is embedded onto the object type, it can't

@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-var dummyConnection *ProcessConnection
+var dummyConnection *Connection
 
 type BasicStruct struct {
 	StringData string
@@ -31,7 +31,7 @@ func (o *BasicQObject) InitObject() {
 func TestMain(m *testing.M) {
 	r1, _ := io.Pipe()
 	_, w2 := io.Pipe()
-	dummyConnection = NewProcessConnection(r1, w2)
+	dummyConnection = NewConnectionSplit(r1, w2)
 
 	os.Exit(m.Run())
 }
