@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/CrimsonAS/qbackend/go"
+	"github.com/CrimsonAS/qbackend/backend"
 )
 
 type Person struct {
