@@ -208,6 +208,10 @@ func (c *Connection) ensureHandler() error {
 	return nil
 }
 
+func (c *Connection) Started() bool {
+	return c.started
+}
+
 // Run processes messages until the connection is closed. Be aware that when using Run,
 // any data exposed in objects could be accessed by the connection at any time. For
 // better control over concurrency, see Process.
