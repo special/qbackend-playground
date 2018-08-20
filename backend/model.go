@@ -35,19 +35,35 @@ type ModelDataSourceRows interface {
 // modelAPI implements the internal qbackend API for model data; see QBackendModel from the plugin
 type modelAPI struct {
 	QObject
-	Model     *Model   `json:"-"`
-	RoleNames []string `json:"roleNames"`
+	Model     *Model `json:"-"`
+	RoleNames []string
+	BatchSize int
 
 	// Signals
-	ModelReset  func([]interface{})      `qbackend:"rowData"`
-	ModelInsert func(int, []interface{}) `qbackend:"start,rowData"`
-	ModelRemove func(int, int)           `qbackend:"start,end"`
-	ModelMove   func(int, int, int)      `qbackend:"start,end,destination"`
-	ModelUpdate func(int, interface{})   `qbackend:"row,data"`
+	ModelReset   func([]interface{}, int)      `qbackend:"rowData,moreRows"`
+	ModelInsert  func(int, []interface{}, int) `qbackend:"start,rowData,moreRows"`
+	ModelRemove  func(int, int)                `qbackend:"start,end"`
+	ModelMove    func(int, int, int)           `qbackend:"start,end,destination"`
+	ModelUpdate  func(int, interface{})        `qbackend:"row,data"`
+	ModelRowData func(int, []interface{})      `qbackend:"start,rowData"`
 }
 
 func (m *modelAPI) Reset() {
 	m.Model.Reset()
+}
+
+func (m *modelAPI) RequestRows(start, count int) {
+	// BatchSize does not apply to RequestRows; the client asked for it
+	rows, _ := m.getRows(start, count, 0)
+	m.Emit("modelRowData", start, rows)
+}
+
+func (m *modelAPI) SetBatchSize(size int) {
+	if size < 0 {
+		size = 0
+	}
+	m.BatchSize = size
+	m.Changed("BatchSize")
 }
 
 func (m *Model) dataSource() ModelDataSource {
@@ -83,41 +99,53 @@ func (m *Model) InitObject() {
 	m.Connection().InitObject(m.ModelAPI)
 }
 
-func (m *Model) Reset() {
-	data := m.dataSource()
+func (m *modelAPI) getRows(start, count, batchSize int) ([]interface{}, int) {
+	data := m.Model.dataSource()
 	if data == nil {
-		// No-op for uninitialized objects
-		return
+		return []interface{}{}, 0
+	}
+
+	rowCount, moreRows := data.RowCount(), 0
+	if start < 0 {
+		start = 0
+	} else if count < 0 {
+		// negative count is for all (remaining) rows
+		count = rowCount - start
+	}
+	if start+count > rowCount {
+		if start >= rowCount {
+			start = rowCount
+		}
+		count = rowCount - start
+		if count < 0 {
+			count = 0
+		}
+	}
+
+	if batchSize > 0 && count > batchSize {
+		moreRows = count - batchSize
+		count = batchSize
 	}
 
 	if s, ok := data.(ModelDataSourceRows); ok {
-		m.ModelAPI.Emit("modelReset", s.Rows())
+		return s.Rows()[start:count], moreRows
 	} else {
-		rows := make([]interface{}, data.RowCount())
+		rows := make([]interface{}, count)
 		for i := 0; i < len(rows); i++ {
-			rows[i] = data.Row(i)
+			rows[i] = data.Row(start + i)
 		}
-		m.ModelAPI.Emit("modelReset", rows)
+		return rows, moreRows
 	}
 }
 
+func (m *Model) Reset() {
+	rows, moreRows := m.ModelAPI.getRows(0, -1, m.ModelAPI.BatchSize)
+	m.ModelAPI.Emit("modelReset", rows, moreRows)
+}
+
 func (m *Model) Inserted(start, count int) {
-	data := m.dataSource()
-	if data == nil {
-		// No-op for uninitialized objects
-		return
-	}
-
-	rows := make([]interface{}, count)
-	if s, ok := data.(ModelDataSourceRows); ok {
-		rows = s.Rows()[start : start+count]
-	} else {
-		for i := 0; i < count; i++ {
-			rows[i] = data.Row(start + i)
-		}
-	}
-
-	m.ModelAPI.Emit("modelInsert", start, rows)
+	rows, moreRows := m.ModelAPI.getRows(start, count, m.ModelAPI.BatchSize)
+	m.ModelAPI.Emit("modelInsert", start, rows, moreRows)
 }
 
 func (m *Model) Removed(start, count int) {

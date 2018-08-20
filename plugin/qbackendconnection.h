@@ -59,6 +59,9 @@ public:
 
     void moveToThread(QThread *thread);
 
+    // Make this private once blocking invoke exists
+    QJsonObject waitForMessage(std::function<bool(const QJsonObject&)> callback);
+
 signals:
     void urlChanged();
     void ready();
@@ -91,7 +94,6 @@ private:
     void handlePendingMessages();
     void write(const QJsonObject &message);
 
-    QJsonObject waitForMessage(std::function<bool(const QJsonObject&)> callback);
     QList<QJsonObject> m_pendingMessages;
     std::function<bool(const QJsonObject&)> m_syncCallback;
     QJsonObject m_syncResult;
