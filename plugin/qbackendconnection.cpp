@@ -519,8 +519,12 @@ QJsonObject QBackendConnection::waitForMessage(std::function<bool(const QJsonObj
     }
 
     Q_ASSERT(!m_syncCallback);
-    Q_ASSERT(m_syncResult.isEmpty());
     m_syncCallback = callback;
+
+    // When waitForMessage is called recursively from handleDataReady, make sure to
+    // restore the syncResult before returning.
+    auto savedResult = m_syncResult;
+    m_syncResult = QJsonObject();
 
     // Flush pending messages, in case one of these is matched by the callback.
     // If not, they will be queued again because m_syncCallback is set.
@@ -535,7 +539,7 @@ QJsonObject QBackendConnection::waitForMessage(std::function<bool(const QJsonObj
     }
 
     QJsonObject re = m_syncResult;
-    m_syncResult = QJsonObject();
+    m_syncResult = savedResult;
     return re;
 }
 
