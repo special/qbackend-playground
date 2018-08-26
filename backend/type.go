@@ -284,8 +284,12 @@ func typeFieldsToTypeInfo(typeInfo *typeInfo, t reflect.Type, index []int) error
 		}
 	}
 
-	for _, at := range anonStructs {
-		if err := typeFieldsToTypeInfo(typeInfo, at.Type, append(index, at.Index...)); err != nil {
+	for _, ast := range anonStructs {
+		at := ast.Type
+		if at.Kind() == reflect.Ptr {
+			at = at.Elem()
+		}
+		if err := typeFieldsToTypeInfo(typeInfo, at, append(index, ast.Index...)); err != nil {
 			return err
 		}
 	}
