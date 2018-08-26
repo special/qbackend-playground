@@ -33,6 +33,8 @@ type typeInfo struct {
 	propertyFieldIndex map[string][]int
 }
 
+var knownTypeInfo = make(map[reflect.Type]*typeInfo)
+
 func typeIsQObject(t reflect.Type) bool {
 	// This matches the logic in QObjectFor, but on Type instead of Value
 	if t.Kind() == reflect.Ptr {
@@ -183,6 +185,10 @@ func parseType(t reflect.Type) (*typeInfo, error) {
 		t = t.Elem()
 	}
 
+	if typeInfo, exists := knownTypeInfo[t]; exists {
+		return typeInfo, nil
+	}
+
 	typeInfo := &typeInfo{
 		Properties:         make(map[string]string),
 		Methods:            make(map[string][]string),
@@ -239,6 +245,7 @@ func parseType(t reflect.Type) (*typeInfo, error) {
 		typeInfo.Methods[name] = paramTypes
 	}
 
+	knownTypeInfo[t] = typeInfo
 	return typeInfo, nil
 }
 
