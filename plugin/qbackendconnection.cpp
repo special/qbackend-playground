@@ -312,22 +312,28 @@ void QBackendConnection::componentComplete()
 
 void QBackendConnection::handleDataReady()
 {
-    while (m_readIo->bytesAvailable() >= 2) {
-        // Peek to see the (ASCII) integer size.
-        // 11 bytes is enough for 2^32 and a space, which is way too much.
-        QByteArray peek(11, 0);
-        int peekSz = m_readIo->peek(peek.data(), qMin(m_readIo->bytesAvailable(), qint64(peek.size())));
-        if (peekSz < 0 || (peekSz == 0 && !m_readIo->isOpen())) {
-            connectionError("read error");
-            return;
-        }
-        peek.resize(peekSz);
+    int rdSize = m_readIo->bytesAvailable();
+    if (rdSize < 1) {
+        return;
+    }
 
-        int headSz = peek.indexOf(' ');
+    int p = m_msgBuf.size();
+    m_msgBuf.resize(p+rdSize);
+
+    rdSize = m_readIo->read(m_msgBuf.data()+p, qint64(rdSize));
+    if (rdSize < 0 || (rdSize == 0 && !m_readIo->isOpen())) {
+        connectionError("read error");
+        return;
+    } else if (p+rdSize < m_msgBuf.size()) {
+        m_msgBuf.resize(p+rdSize);
+    }
+
+    while (m_msgBuf.size() >= 2) {
+        int headSz = m_msgBuf.indexOf(' ');
         if (headSz < 1) {
-            if (headSz == 0 || peek.size() == 11) {
+            if (headSz == 0) {
                 // Everything has gone wrong
-                qCDebug(lcConnection) << "Invalid data on connection:" << peek;
+                qCDebug(lcConnection) << "Invalid data on connection:" << m_msgBuf;
                 connectionError("invalid data");
             }
             // Otherwise, there's just not a full size yet
@@ -335,10 +341,10 @@ void QBackendConnection::handleDataReady()
         }
 
         bool szOk = false;
-        int blobSz = peek.mid(0, headSz).toInt(&szOk);
+        int blobSz = m_msgBuf.mid(0, headSz).toInt(&szOk);
         if (!szOk || blobSz < 1) {
             // Also everything has gone wrong
-            qCDebug(lcConnection) << "Invalid data on connection:" << peek;
+            qCDebug(lcConnection) << "Invalid data on connection:" << m_msgBuf;
             connectionError("invalid data");
             return;
         }
@@ -346,19 +352,13 @@ void QBackendConnection::handleDataReady()
         headSz++;
 
         // Wait for headSz + blobSz + 1 (the newline) bytes
-        if (m_readIo->bytesAvailable() < headSz + blobSz + 1) {
+        if (m_msgBuf.size() < headSz + blobSz + 1) {
             return;
         }
 
         // Skip past headSz, then read blob and trim newline
-        m_readIo->skip(headSz);
-        QByteArray message(blobSz + 1, 0);
-        if (m_readIo->read(message.data(), message.size()) < message.size()) {
-            // This should not happen, unless bytesAvailable lied
-            connectionError("read failed");
-            return;
-        }
-        message.chop(1);
+        QByteArray message = m_msgBuf.mid(headSz, blobSz);
+        m_msgBuf.remove(0, headSz+blobSz+1);
 
         handleMessage(message);
     }

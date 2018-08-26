@@ -81,6 +81,7 @@ private:
     QUrl m_url;
     QIODevice *m_readIo = nullptr;
     QIODevice *m_writeIo = nullptr;
+    QByteArray m_msgBuf;
     QList<QByteArray> m_pendingData;
     int m_version = 0;
     bool m_blockReadSignals = false;
