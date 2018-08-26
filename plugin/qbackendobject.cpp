@@ -33,7 +33,7 @@ QMetaObject QBackendObject::staticMetaObject =
 QBackendObject::QBackendObject(QBackendConnection *connection, QByteArray identifier, const QJsonObject &type, QObject *parent)
     : QObject(parent)
     , d(new BackendObjectPrivate(this, connection, identifier))
-    , m_metaObject(metaObjectFromType(type))
+    , m_metaObject(connection->newTypeMetaObject(type))
 {
 }
 

@@ -645,3 +645,23 @@ QObject *QBackendConnection::ensureObject(const QJsonObject &data)
 
     return proxyObject->object();
 }
+
+QMetaObject *QBackendConnection::newTypeMetaObject(const QJsonObject &type)
+{
+    QMetaObject *mo = m_typeCache.value(type.value("name").toString());
+    if (!mo) {
+        // If type is a model type, set a superclass as well
+        if (!type.value("properties").toObject().value("_qb_model").isUndefined()) {
+            mo = metaObjectFromType(type, &QAbstractListModel::staticMetaObject);
+        } else {
+            mo = metaObjectFromType(type, nullptr);
+        }
+
+        m_typeCache.insert(type.value("name").toString(), mo);
+        qDebug(lcConnection) << "Cached metaobject for type" << type.value("name").toString();
+    }
+
+    // Return a copy of the cached metaobject
+    QMetaObjectBuilder b(mo);
+    return b.toMetaObject();
+}

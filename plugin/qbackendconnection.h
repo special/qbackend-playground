@@ -62,6 +62,8 @@ public:
     // Make this private once blocking invoke exists
     QJsonObject waitForMessage(std::function<bool(const QJsonObject&)> callback);
 
+    QMetaObject *newTypeMetaObject(const QJsonObject &type);
+
 signals:
     void urlChanged();
     void ready();
@@ -105,5 +107,7 @@ private:
     QHash<QByteArray,QBackendRemoteObject*> m_objects;
     QBackendObject *m_rootObject = nullptr;
     QJsonArray m_creatableTypes;
+
+    QHash<QString,QMetaObject*> m_typeCache;
 };
 
