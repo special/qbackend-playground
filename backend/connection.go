@@ -3,6 +3,7 @@ package qbackend
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -383,6 +384,21 @@ func (c *Connection) Object(name string) QObject {
 // client.
 func (c *Connection) InitObject(obj QObject) error {
 	_, err := initObject(obj, c)
+	return err
+}
+
+// InitObjectId is equvialent to InitObject, but takes an identifier for the
+// the object. Nothing is changed if the object has already been initialized.
+//
+// In some cases, it's useful to look up an object by a known/composed name,
+// because holding a reference to that object would prevent garbage collection.
+// This is particularly true when writing wrapper types where the object is
+// uniquely wrapping another non-QObject type.
+func (c *Connection) InitObjectId(obj QObject, id string) error {
+	if eobj, exists := c.objects[id]; exists && obj != eobj {
+		return errors.New("object id in use")
+	}
+	_, err := initObjectId(obj, c, id)
 	return err
 }
 
