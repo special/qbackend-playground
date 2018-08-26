@@ -126,7 +126,10 @@ void QBackendConnection::setBackendIo(QIODevice *rd, QIODevice *wr)
 
     if (m_pendingData.length()) {
         for (const QByteArray& data : m_pendingData) {
-            m_writeIo->write(data);
+            if (m_writeIo->write(data) < 0) {
+                connectionError("flush pending data");
+                return;
+            }
         }
         m_pendingData.clear();
     }
@@ -309,13 +312,13 @@ void QBackendConnection::componentComplete()
 
 void QBackendConnection::handleDataReady()
 {
-    for (;;) {
+    while (m_readIo->bytesAvailable() >= 2) {
         // Peek to see the (ASCII) integer size.
         // 11 bytes is enough for 2^32 and a space, which is way too much.
         QByteArray peek(11, 0);
-        int peekSz = m_readIo->peek(peek.data(), peek.size());
+        int peekSz = m_readIo->peek(peek.data(), qMin(m_readIo->bytesAvailable(), qint64(peek.size())));
         if (peekSz < 0 || (peekSz == 0 && !m_readIo->isOpen())) {
-            qCWarning(lcConnection) << "Read error:" << m_readIo->errorString();
+            connectionError("read error");
             return;
         }
         peek.resize(peekSz);
@@ -324,9 +327,8 @@ void QBackendConnection::handleDataReady()
         if (headSz < 1) {
             if (headSz == 0 || peek.size() == 11) {
                 // Everything has gone wrong
-                qCWarning(lcConnection) << "Invalid data on connection:" << peek;
-                // XXX All of these close/failure cases are basically unhandled.
-                m_readIo->close();
+                qCDebug(lcConnection) << "Invalid data on connection:" << peek;
+                connectionError("invalid data");
             }
             // Otherwise, there's just not a full size yet
             return;
@@ -336,8 +338,8 @@ void QBackendConnection::handleDataReady()
         int blobSz = peek.mid(0, headSz).toInt(&szOk);
         if (!szOk || blobSz < 1) {
             // Also everything has gone wrong
-            qCWarning(lcConnection) << "Invalid data on connection:" << peek;
-            m_readIo->close();
+            qCDebug(lcConnection) << "Invalid data on connection:" << peek;
+            connectionError("invalid data");
             return;
         }
         // Include space in headSz now
@@ -353,13 +355,23 @@ void QBackendConnection::handleDataReady()
         QByteArray message(blobSz + 1, 0);
         if (m_readIo->read(message.data(), message.size()) < message.size()) {
             // This should not happen, unless bytesAvailable lied
-            qCWarning(lcConnection) << "Read failed:" << m_readIo->errorString();
+            connectionError("read failed");
             return;
         }
         message.chop(1);
 
         handleMessage(message);
     }
+}
+
+void QBackendConnection::connectionError(const QString &context)
+{
+    qCCritical(lcConnection) << "Connection failed during" << context <<
+        ": (read: " << (m_readIo ? m_readIo->errorString() : "null") << ") "
+        "(write: " << (m_writeIo ? m_writeIo->errorString() : "null") << ")";
+    m_readIo->close();
+    m_writeIo->close();
+    qFatal("backend failed");
 }
 
 void QBackendConnection::handleMessage(const QByteArray &message)
@@ -372,6 +384,7 @@ void QBackendConnection::handleMessage(const QByteArray &message)
     QJsonDocument json = QJsonDocument::fromJson(message, &pe);
     if (!json.isObject()) {
         qCWarning(lcProto) << "bad message:" << message << pe.errorString();
+        connectionError("bad message");
         return;
     }
 
@@ -447,6 +460,9 @@ void QBackendConnection::handleMessage(const QJsonObject &cmd)
         if (obj) {
             obj->methodInvoked(method, params);
         }
+    } else {
+        qCWarning(lcConnection) << "Unknown command" << command << "from backend";
+        connectionError("unknown command");
     }
 }
 
@@ -478,7 +494,9 @@ void QBackendConnection::write(const QJsonObject &message)
 #if defined(PROTO_DEBUG)
     qCDebug(lcProto) << "Writing " << data;
 #endif
-    m_writeIo->write(data);
+    if (m_writeIo->write(data) < 0) {
+        connectionError("write");
+    }
 }
 
 // waitForMessage blocks and reads messages from the connection, passing each to the callback
@@ -494,8 +512,10 @@ QJsonObject QBackendConnection::waitForMessage(std::function<bool(const QJsonObj
 {
     // Flush write buffer before blocking
     while (m_writeIo->bytesToWrite() > 0) {
-        if (!m_writeIo->waitForBytesWritten(5000))
-            break;
+        if (!m_writeIo->waitForBytesWritten(5000)) {
+            connectionError("synchronous write");
+            return QJsonObject();
+        }
     }
 
     Q_ASSERT(!m_syncCallback);
@@ -507,8 +527,10 @@ QJsonObject QBackendConnection::waitForMessage(std::function<bool(const QJsonObj
     handlePendingMessages();
 
     while (m_syncResult.isEmpty()) {
-        if (!m_readIo->waitForReadyRead(5000))
+        if (!m_readIo->waitForReadyRead(5000)) {
+            connectionError("synchronous read");
             break;
+        }
         handleDataReady();
     }
 

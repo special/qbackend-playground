@@ -94,6 +94,8 @@ private:
     void handlePendingMessages();
     void write(const QJsonObject &message);
 
+    void connectionError(const QString &context);
+
     QList<QJsonObject> m_pendingMessages;
     std::function<bool(const QJsonObject&)> m_syncCallback;
     QJsonObject m_syncResult;
