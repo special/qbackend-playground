@@ -3,7 +3,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QLoggingCategory>
-#include <QLocalSocket>
+#include <QAbstractSocket>
 #include <QQmlEngine>
 #include <QQmlContext>
 #include <QCoreApplication>
@@ -84,17 +84,17 @@ void QBackendConnection::setUrl(const QUrl& url)
             return;
         }
 
-        QLocalSocket *rd = new QLocalSocket(this);
+        QAbstractSocket *rd = new QAbstractSocket(QAbstractSocket::UnknownSocketType, this);
         if (!rd->setSocketDescriptor(rdFd)) {
             qCritical() << "QBackendConnection failed for read fd:" << rd->errorString();
             return;
         }
 
-        QLocalSocket *wr = nullptr;
+        QAbstractSocket *wr = nullptr;
         if (rdFd == wrFd) {
             wr = rd;
         } else {
-            wr = new QLocalSocket(this);
+            wr = new QAbstractSocket(QAbstractSocket::UnknownSocketType, this);
             if (!wr->setSocketDescriptor(wrFd)) {
                 qCritical() << "QBackendConnection failed for write fd:" << wr->errorString();
                 return;
