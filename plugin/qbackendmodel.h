@@ -14,7 +14,7 @@ class QBackendModel : public QAbstractListModel, public QQmlParserStatus
     friend class BackendModelPrivate;
 
 public:
-    QBackendModel(QBackendConnection *connection, QByteArray identifier, const QJsonObject &type, QObject *parent = nullptr);
+    QBackendModel(QBackendConnection *connection, QByteArray identifier, QMetaObject *metaObject, QObject *parent = nullptr);
     virtual ~QBackendModel();
 
     virtual const QMetaObject *metaObject() const override;

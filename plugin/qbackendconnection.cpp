@@ -108,7 +108,7 @@ void QBackendConnection::setUrl(const QUrl& url)
     }
 }
 
-QBackendObject *QBackendConnection::rootObject()
+QObject *QBackendConnection::rootObject()
 {
     ensureRootObject();
     return m_rootObject;
@@ -436,13 +436,13 @@ void QBackendConnection::handleMessage(const QJsonObject &cmd)
         }
 
         if (!m_rootObject) {
-            m_rootObject = new QBackendObject(this, "root", cmd.value("type").toObject(), this);
-            QQmlEngine::setContextForObject(m_rootObject, qmlContext(this));
-            m_rootObject->resetData(cmd.value("data").toObject());
+            m_rootObject = ensureObject("root", cmd.value("type").toObject());
+            QQmlEngine::setObjectOwnership(m_rootObject, QQmlEngine::CppOwnership);
+            m_objects.value("root")->objectFound(cmd.value("data").toObject());
             emit ready();
         } else {
             // XXX assert that type has not changed
-            m_rootObject->resetData(cmd.value("data").toObject());
+            m_objects.value("root")->objectFound(cmd.value("data").toObject());
         }
     } else if (command == "OBJECT_RESET") {
         QByteArray identifier = cmd.value("identifier").toString().toUtf8();
@@ -621,19 +621,23 @@ QObject *QBackendConnection::object(const QByteArray &identifier) const
 // "_qbackend_": "object" format described in qbackendobject.cpp.
 QObject *QBackendConnection::ensureObject(const QJsonObject &data)
 {
-    QByteArray identifier = data.value("identifier").toString().toUtf8();
+    return ensureObject(data.value("identifier").toString().toUtf8(), data.value("type").toObject());
+}
+
+QObject *QBackendConnection::ensureObject(const QByteArray &identifier, const QJsonObject &type)
+{
     if (identifier.isEmpty())
         return nullptr;
 
     auto proxyObject = m_objects.value(identifier);
     if (!proxyObject) {
-        QJsonObject type = data.value("type").toObject();
-
+        QMetaObject *metaObject = newTypeMetaObject(type);
         QObject *object;
-        if (!type.value("properties").toObject().value("_qb_model").isUndefined())
-            object = new QBackendModel(this, identifier, type);
+
+        if (metaObject->inherits(&QAbstractListModel::staticMetaObject))
+            object = new QBackendModel(this, identifier, metaObject);
         else
-            object = new QBackendObject(this, identifier, type);
+            object = new QBackendObject(this, identifier, metaObject);
         QQmlEngine::setContextForObject(object, qmlContext(this));
         // This should be the result of the heuristic, but I never trust it.
         QQmlEngine::setObjectOwnership(object, QQmlEngine::JavaScriptOwnership);
@@ -650,6 +654,12 @@ QMetaObject *QBackendConnection::newTypeMetaObject(const QJsonObject &type)
 {
     QMetaObject *mo = m_typeCache.value(type.value("name").toString());
     if (!mo) {
+        if (type.value("omitted").toBool()) {
+            // Type does not contain the full description, backend expected it to be cached.
+            qCWarning(lcConnection) << "Expected cached type description for" << type.value("name").toString() << "to create object";
+            // This is a bug, but allow it to continue as an object with no properties
+        }
+
         // If type is a model type, set a superclass as well
         if (!type.value("properties").toObject().value("_qb_model").isUndefined()) {
             mo = metaObjectFromType(type, &QAbstractListModel::staticMetaObject);

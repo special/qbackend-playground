@@ -30,10 +30,10 @@ QMetaObject QBackendObject::staticMetaObject =
     return *b.toMetaObject();
 }();
 
-QBackendObject::QBackendObject(QBackendConnection *connection, QByteArray identifier, const QJsonObject &type, QObject *parent)
+QBackendObject::QBackendObject(QBackendConnection *connection, QByteArray identifier, QMetaObject *metaObject, QObject *parent)
     : QObject(parent)
     , d(new BackendObjectPrivate(this, connection, identifier))
-    , m_metaObject(connection->newTypeMetaObject(type))
+    , m_metaObject(metaObject)
 {
 }
 

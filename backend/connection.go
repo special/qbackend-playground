@@ -25,6 +25,7 @@ type Connection struct {
 	out          io.WriteCloser
 	objects      map[string]QObject
 	instantiable map[string]instantiableType
+	knownTypes   map[string]struct{}
 	err          error
 
 	started       bool
@@ -48,6 +49,7 @@ func NewConnectionSplit(in io.ReadCloser, out io.WriteCloser) *Connection {
 		out:           out,
 		objects:       make(map[string]QObject),
 		instantiable:  make(map[string]instantiableType),
+		knownTypes:    make(map[string]struct{}),
 		processSignal: make(chan struct{}, 2),
 		queue:         make(chan []byte, 128),
 	}
@@ -268,6 +270,8 @@ func (c *Connection) Process() error {
 				impl := objectImplFor(obj)
 				impl.Ref = true
 				impl.refsChanged()
+				// Record that the client has acknowledged an object of this type
+				c.knownTypes[impl.Type.Name] = struct{}{}
 			} else {
 				c.warn("ref of unknown object %s", identifier)
 			}
@@ -470,4 +474,9 @@ func (c *Connection) RegisterType(name string, t QObject, factory func() QObject
 		Factory: factory,
 	}
 	return nil
+}
+
+func (c *Connection) typeIsAcknowledged(t *typeInfo) bool {
+	_, exists := c.knownTypes[t.Name]
+	return exists
 }

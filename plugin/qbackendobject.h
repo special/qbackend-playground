@@ -9,7 +9,7 @@ class QBackendConnection;
 class QBackendObject : public QObject, public QQmlParserStatus
 {
 public:
-    QBackendObject(QBackendConnection *connection, QByteArray identifier, const QJsonObject &type, QObject *parent = nullptr);
+    QBackendObject(QBackendConnection *connection, QByteArray identifier, QMetaObject *metaObject, QObject *parent = nullptr);
     virtual ~QBackendObject();
 
     // Used by QBackendConnection for "root" object data, which follows

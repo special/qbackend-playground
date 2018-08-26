@@ -376,14 +376,28 @@ func (o *objectImpl) ResetProperties() {
 // and this function returns the typeinfo that is appropriate when an object is
 // referenced from another object.
 func (o *objectImpl) MarshalJSON() ([]byte, error) {
+	var desc interface{}
+
+	// If the client has previously acknowledged an object with this type, there is
+	// no need to send the full type structure again; it will be looked up based on
+	// typeName.
+	if o.C.typeIsAcknowledged(o.Type) {
+		desc = struct {
+			Name    string `json:"name"`
+			Omitted bool   `json:"omitted"`
+		}{o.Type.Name, true}
+	} else {
+		desc = o.Type
+	}
+
 	obj := struct {
-		Tag        string    `json:"_qbackend_"`
-		Identifier string    `json:"identifier"`
-		Type       *typeInfo `json:"type"`
+		Tag        string      `json:"_qbackend_"`
+		Identifier string      `json:"identifier"`
+		Type       interface{} `json:"type"`
 	}{
 		"object",
 		o.Identifier(),
-		o.Type,
+		desc,
 	}
 
 	// Marshaling typeinfo for an object resets the refcounting grace period.

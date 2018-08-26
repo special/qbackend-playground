@@ -31,7 +31,7 @@ class QBackendConnection : public QObject, public QQmlParserStatus
     Q_OBJECT
     Q_INTERFACES(QQmlParserStatus)
     Q_PROPERTY(QUrl url READ url WRITE setUrl NOTIFY urlChanged)
-    Q_PROPERTY(QBackendObject* root READ rootObject NOTIFY ready)
+    Q_PROPERTY(QObject* root READ rootObject NOTIFY ready)
 
 public:
     QBackendConnection(QObject *parent = nullptr);
@@ -43,10 +43,11 @@ public:
     QUrl url() const;
     void setUrl(const QUrl& url);
 
-    QBackendObject *rootObject();
+    QObject *rootObject();
 
     Q_INVOKABLE QObject *object(const QByteArray &identifier) const;
     QObject *ensureObject(const QJsonObject &object);
+    QObject *ensureObject(const QByteArray &identifier, const QJsonObject &type);
 
     void registerTypes(const char *uri);
     void blockReadSignals(bool blocked);
@@ -105,7 +106,7 @@ private:
 
     // Hash of identifier -> proxy object for all existing objects
     QHash<QByteArray,QBackendRemoteObject*> m_objects;
-    QBackendObject *m_rootObject = nullptr;
+    QObject *m_rootObject = nullptr;
     QJsonArray m_creatableTypes;
 
     QHash<QString,QMetaObject*> m_typeCache;
