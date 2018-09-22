@@ -18,6 +18,7 @@ public:
 
     QJsonObject m_dataObject;
     bool m_dataReady = false;
+    bool m_waitingForData = false;
 
     BackendObjectPrivate(QObject *object, QBackendConnection *connection, const QByteArray &identifier);
     BackendObjectPrivate(const char *typeName, QObject *object, QBackendConnection *connection);

@@ -156,6 +156,17 @@ void BackendObjectPrivate::resetData(const QJsonObject& object)
     m_dataObject = object;
     m_dataReady = true;
 
+    // Don't emit signals for the initial query of properties; nothing could
+    // have read properties before this, so it's meaningless to say that they
+    // have changed.
+    //
+    // This is distinct from m_dataReady, because spontaneous change signals
+    // should still be sent even if data hadn't been loaded before. The signals
+    // are suppressed only for data in response to an OBJECT_QUERY.
+    if (m_waitingForData) {
+        return;
+    }
+
     // XXX Do something smarter than signaling for every property
     // XXX This is also wrong: any properties in the old m_dataObject that
     // aren't in object have also changed.
@@ -184,11 +195,10 @@ int BackendObjectPrivate::metacall(QMetaObject::Call c, int id, void **argv)
             jsonValueToMetaArgs(QMetaType::QString, QJsonValue(QString(m_identifier)), argv[0]);
         } else {
             if (!m_dataReady) {
-                // XXX This ends up in objectFound and sends notify signals, which sounds a little
-                // dangerous.. I could imagine it creating fake binding loops. They could be deferred
-                // I guess?
                 qCDebug(lcObject) << "Blocking to load data for object" << m_identifier << "from read of property" << property.name();
+                m_waitingForData = true;
                 m_connection->resetObjectData(m_identifier, true);
+                m_waitingForData = false;
             }
 
             jsonValueToMetaArgs(static_cast<QMetaType::Type>(property.userType()), m_dataObject.value(property.name()), argv[0]);
