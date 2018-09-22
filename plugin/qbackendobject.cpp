@@ -177,8 +177,9 @@ void BackendObjectPrivate::resetData(const QJsonObject& object)
             continue;
         QMetaProperty property = metaObject->property(index);
         int notifyIndex = property.notifySignalIndex();
-        if (notifyIndex >= 0)
+        if (notifyIndex >= 0) {
             QMetaObject::activate(m_object, notifyIndex, nullptr);
+        }
     }
 }
 

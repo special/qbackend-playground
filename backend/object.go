@@ -238,10 +238,6 @@ func (o *objectImpl) Invoke(methodName string, inArgs ...interface{}) error {
 
 	// Build list of arguments
 	callArgs := make([]reflect.Value, methodType.NumIn())
-	// If the first argument is a ptr to o.Object's type, pass it in
-	if len(callArgs) > 0 && methodType.In(0) == reflect.TypeOf(o.Object) {
-		inArgs = append([]interface{}{o.Object}, inArgs...)
-	}
 
 	if len(inArgs) != methodType.NumIn() {
 		return fmt.Errorf("wrong number of arguments for %s; expected %d, provided %d",
@@ -277,7 +273,10 @@ func (o *objectImpl) Invoke(methodName string, inArgs ...interface{}) error {
 		}
 
 		// Match types, converting or unmarshaling if possible
-		if inArgValue.Type() == argType {
+		if inArgValue.Kind() == reflect.Invalid {
+			// Zero value, argument is nil
+			callArg = reflect.Zero(argType)
+		} else if inArgValue.Type() == argType {
 			// Types match
 			callArg = inArgValue
 		} else if inArgValue.Type().ConvertibleTo(argType) {
