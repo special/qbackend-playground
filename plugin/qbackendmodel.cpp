@@ -51,6 +51,7 @@ int QBackendModel::qt_metacall(QMetaObject::Call c, int id, void **argv)
 
 void QBackendModel::classBegin()
 {
+    d->classBegin();
 }
 
 void QBackendModel::componentComplete()

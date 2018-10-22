@@ -65,6 +65,7 @@ int QBackendObject::qt_metacall(QMetaObject::Call c, int id, void **argv)
 
 void QBackendObject::classBegin()
 {
+    d->classBegin();
 }
 
 void QBackendObject::componentComplete()
@@ -137,6 +138,18 @@ void BackendObjectPrivate::methodInvoked(const QString &name, const QJsonArray &
             QMetaType::destroy(method.parameterType(j), argv[j+1]);
 
         break;
+    }
+}
+
+void BackendObjectPrivate::classBegin()
+{
+    // If the connection doesn't have an engine associated yet, give it the one from this object.
+    // This happens in the singleton plugin when an instantiable type is created before anything
+    // references the root object singleton (which also does this initialization).
+    if (!m_connection->qmlEngine()) {
+        qCDebug(lcObject) << "setting engine" << qmlEngine(m_object) << "for connection at object instantiation";
+        m_connection->setQmlEngine(qmlEngine(m_object));
+        m_connection->blockReadSignals(false);
     }
 }
 

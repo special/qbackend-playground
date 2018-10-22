@@ -392,7 +392,7 @@ func (c *Connection) InitObject(obj QObject) error {
 }
 
 // InitObjectId is equvialent to InitObject, but takes an identifier for the
-// the object. Nothing is changed if the object has already been initialized.
+// object. Nothing is changed if the object has already been initialized.
 //
 // In some cases, it's useful to look up an object by a known/composed name,
 // because holding a reference to that object would prevent garbage collection.

@@ -31,6 +31,7 @@ public:
 
     int metacall(QMetaObject::Call c, int id, void **argv);
 
+    void classBegin();
     void componentComplete();
 
     void *jsonValueToMetaArgs(QMetaType::Type type, const QJsonValue &value, void *p = nullptr);
