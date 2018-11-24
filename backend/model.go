@@ -74,7 +74,7 @@ func (m *Model) dataSource() ModelDataSource {
 	// This enables a neat trick: we can access the QObject here, and its Object
 	// field will point back to the app's type, which is usually not available
 	// from embedded types.
-	impl := objectImplFor(m)
+	impl, _ := asQObject(m)
 	if impl == nil {
 		return nil
 	}

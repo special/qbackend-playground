@@ -25,7 +25,6 @@ const (
 // Connection.InitObject(), which is useful to avoid needing nil checks.
 type QObject interface {
 	json.Marshaler
-	MarshalObject() (map[string]interface{}, error)
 
 	Connection() *Connection
 	Identifier() string
@@ -34,11 +33,6 @@ type QObject interface {
 	// will not be encoded.
 	Referenced() bool
 
-	// Invoke calls the named method of the object, converting or
-	// unmarshaling parameters as necessary. An error is returned if the
-	// method is not invoked, but the return value of the method is
-	// ignored.
-	Invoke(method string, args ...interface{}) error
 	// Emit emits the named signal asynchronously. The signal must be
 	// defined within the object and parameters must match exactly.
 	Emit(signal string, args ...interface{})
@@ -60,47 +54,6 @@ type QObjectHasInit interface {
 	InitObject()
 }
 
-// QObjectFor indicates whether a value is a qbackend object, and returns
-// the embedded QObject instance if present.
-func QObjectFor(obj interface{}) (bool, QObject) {
-	v := reflect.ValueOf(obj)
-	if v.Kind() != reflect.Ptr {
-		return false, nil
-	}
-	v = v.Elem()
-	if !v.IsValid() {
-		return false, nil
-	}
-	if v.Kind() != reflect.Struct {
-		return false, nil
-	}
-	f := v.FieldByName("QObject")
-	if !f.IsValid() {
-		return false, nil
-	}
-	if f.Type() != reflect.TypeOf((*QObject)(nil)).Elem() {
-		return false, nil
-	}
-	// Also assert that the field is embedded
-	if sField, ok := v.Type().FieldByName("QObject"); !ok || !sField.Anonymous {
-		return false, nil
-	}
-	if re := f.Interface(); re == nil {
-		return true, nil
-	} else {
-		return true, re.(QObject)
-	}
-}
-
-func objectImplFor(obj interface{}) *objectImpl {
-	is, q := QObjectFor(obj)
-	if !is || q == nil {
-		return nil
-	} else {
-		return q.(*objectImpl)
-	}
-}
-
 type objectImpl struct {
 	C        *Connection
 	Id       string
@@ -120,18 +73,39 @@ type objectImpl struct {
 
 var errNotQObject = errors.New("Struct does not embed QObject")
 
-func initObject(object interface{}, c *Connection) (QObject, error) {
+// asQObject returns the *objectImpl for obj, if any, and a boolean indicating if
+// obj implements QObject at all.
+func asQObject(obj interface{}) (*objectImpl, bool) {
+	if _, ok := obj.(QObject); !ok {
+		return nil, false
+	} else if v := reflect.Indirect(reflect.ValueOf(obj)); !v.IsValid() || v.Kind() != reflect.Struct {
+		return nil, false
+	} else if f := v.FieldByName("QObject"); !f.IsValid() {
+		return nil, false
+	} else {
+		impl, _ := f.Interface().(*objectImpl)
+		return impl, true
+	}
+}
+
+func initObject(object interface{}, c *Connection) (*objectImpl, error) {
 	u, _ := uuid.NewV4()
 	return initObjectId(object, c, u.String())
 }
 
-func initObjectId(object interface{}, c *Connection, id string) (QObject, error) {
-	var impl *objectImpl
+func initObjectId(object interface{}, c *Connection, id string) (*objectImpl, error) {
 	var newObject bool
-
-	if hasObj, obj := QObjectFor(object); !hasObj {
+	value := reflect.Indirect(reflect.ValueOf(object))
+	if !value.IsValid() || value.Kind() != reflect.Struct {
 		return nil, errNotQObject
-	} else if obj == nil {
+	}
+	field := value.FieldByName("QObject")
+	if !field.IsValid() {
+		return nil, errNotQObject
+	}
+
+	var impl *objectImpl
+	if impl, _ = field.Interface().(*objectImpl); impl == nil {
 		newObject = true
 		impl = &objectImpl{
 			C:           c,
@@ -140,21 +114,20 @@ func initObjectId(object interface{}, c *Connection, id string) (QObject, error)
 			refChildren: make(map[string]int),
 		}
 
-		if ti, err := parseType(reflect.TypeOf(object)); err != nil {
+		if ti, err := parseType(value.Type()); err != nil {
 			return nil, err
 		} else {
 			impl.Type = ti
 		}
 
 		// Write to the QObject embedded field
-		reflect.ValueOf(object).Elem().FieldByName("QObject").Set(reflect.ValueOf(impl))
+		field.Set(reflect.ValueOf(impl))
 
 		// Initialize signals
 		if err := initSignals(object, impl); err != nil {
 			return nil, err
 		}
 	} else {
-		impl = objectImplFor(object)
 		if !impl.Inactive {
 			// Active object, nothing needs to happen here
 			return impl, nil
@@ -223,6 +196,10 @@ func (o *objectImpl) Referenced() bool {
 	return o.Ref
 }
 
+// Invoke calls the named method of the object, converting or
+// unmarshaling parameters as necessary. An error is returned if the
+// method is not invoked, but the return value of the method is
+// ignored.
 func (o *objectImpl) Invoke(methodName string, inArgs ...interface{}) error {
 	if _, exists := o.Type.Methods[methodName]; !exists {
 		return errors.New("method does not exist")
@@ -342,7 +319,7 @@ func (o *objectImpl) Emit(signal string, args ...interface{}) {
 }
 
 func (o *objectImpl) emitReflected(signal string, args []reflect.Value) {
-	var unwrappedArgs []interface{}
+	unwrappedArgs := make([]interface{}, 0, len(args))
 	for _, a := range args {
 		unwrappedArgs = append(unwrappedArgs, a.Interface())
 	}
@@ -440,7 +417,8 @@ func (o *objectImpl) MarshalObject() (map[string]interface{}, error) {
 				if _, existing := o.refChildren[id]; !existing {
 					// Reference to an object that was not referenced before
 					if obj := o.C.Object(id); obj != nil {
-						objectImplFor(obj).refCount++
+						impl, _ := asQObject(obj)
+						impl.refCount++
 						o.refsChanged()
 					}
 				}
@@ -454,7 +432,8 @@ func (o *objectImpl) MarshalObject() (map[string]interface{}, error) {
 				}
 				delete(o.refChildren, k)
 				if obj := o.C.Object(k); obj != nil {
-					objectImplFor(obj).refCount--
+					impl, _ := asQObject(obj)
+					impl.refCount--
 					o.refsChanged()
 				}
 			}

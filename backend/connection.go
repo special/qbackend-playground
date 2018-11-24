@@ -124,9 +124,10 @@ func (c *Connection) handle() {
 			c.fatal("no root object on active connection")
 			return
 		}
-		objectImplFor(c.RootObject).Ref = true
+		impl, _ := asQObject(c.RootObject)
+		impl.Ref = true
 
-		data, err := c.RootObject.MarshalObject()
+		data, err := impl.MarshalObject()
 		if err != nil {
 			c.fatal("marshalling of root object failed: %s", err)
 			return
@@ -140,7 +141,7 @@ func (c *Connection) handle() {
 		}{
 			messageBase{"ROOT"},
 			"root",
-			objectImplFor(c.RootObject).Type,
+			impl.Type,
 			data,
 		})
 	}
@@ -193,12 +194,8 @@ func (c *Connection) ensureHandler() error {
 
 		if c.RootObject == nil {
 			c.fatal("connection must have a root object")
-		} else if isObject, obj := QObjectFor(c.RootObject); !isObject {
-			c.fatal("root object must be a QObject")
-		} else if obj == nil {
-			if _, err := initObjectId(c.RootObject, c, "root"); err != nil {
-				c.fatal("root object init failed: %s", err)
-			}
+		} else if _, err := initObjectId(c.RootObject, c, "root"); err != nil {
+			c.fatal("root object init failed: %s", err)
 		}
 
 		if c.err != nil {
@@ -263,11 +260,11 @@ func (c *Connection) Process() error {
 
 		identifier := msg["identifier"].(string)
 		obj, objExists := c.objects[identifier]
+		impl, _ := asQObject(obj)
 
 		switch msg["command"] {
 		case "OBJECT_REF":
 			if objExists {
-				impl := objectImplFor(obj)
 				impl.Ref = true
 				impl.refsChanged()
 				// Record that the client has acknowledged an object of this type
@@ -278,7 +275,6 @@ func (c *Connection) Process() error {
 
 		case "OBJECT_DEREF":
 			if objExists {
-				impl := objectImplFor(obj)
 				impl.Ref = false
 				impl.refsChanged()
 			} else {
@@ -287,7 +283,7 @@ func (c *Connection) Process() error {
 
 		case "OBJECT_QUERY":
 			if objExists {
-				c.sendUpdate(obj)
+				c.sendUpdate(impl)
 			} else {
 				c.fatal("query of unknown object %s", identifier)
 			}
@@ -303,8 +299,8 @@ func (c *Connection) Process() error {
 				break
 			} else {
 				obj := t.Factory()
-				initObjectId(obj, c, identifier)
-				objectImplFor(obj).Ref = true
+				impl, _ := initObjectId(obj, c, identifier)
+				impl.Ref = true
 			}
 
 		case "INVOKE":
@@ -316,7 +312,7 @@ func (c *Connection) Process() error {
 					break
 				}
 
-				if err := obj.Invoke(method, params...); err != nil {
+				if err := impl.Invoke(method, params...); err != nil {
 					c.warn("invoke of %s on %s failed: %s", method, identifier, err)
 					break
 				}
@@ -364,7 +360,7 @@ func (c *Connection) addObject(obj QObject) {
 // will be re-added under the same ID.
 func (c *Connection) collectObjects() {
 	for id, obj := range c.objects {
-		impl := objectImplFor(obj)
+		impl, _ := asQObject(obj)
 		if !impl.Ref && impl.refCount < 1 && time.Now().After(impl.refGraceTime) {
 			delete(c.objects, id)
 			impl.Inactive = true
@@ -406,14 +402,13 @@ func (c *Connection) InitObjectId(obj QObject, id string) error {
 	return err
 }
 
-func (c *Connection) sendUpdate(obj QObject) error {
-	if !obj.Referenced() {
+func (c *Connection) sendUpdate(impl *objectImpl) error {
+	if !impl.Referenced() {
 		return nil
 	}
 
-	data, err := obj.MarshalObject()
+	data, err := impl.MarshalObject()
 	if err != nil {
-		impl := objectImplFor(obj)
 		c.warn("marshal of object %s (type %s) failed: %s", impl.Id, impl.Type.Name, err)
 		return err
 	}
@@ -424,7 +419,7 @@ func (c *Connection) sendUpdate(obj QObject) error {
 		Data       map[string]interface{} `json:"data"`
 	}{
 		messageBase{"OBJECT_RESET"},
-		obj.Identifier(),
+		impl.Identifier(),
 		data,
 	})
 	return nil
