@@ -208,6 +208,7 @@ func (c *Connection) ensureHandler() error {
 	return nil
 }
 
+// Started returns true if the connection has been started by a call to Run() or Process()
 func (c *Connection) Started() bool {
 	return c.started
 }

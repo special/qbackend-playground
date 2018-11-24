@@ -1,37 +1,97 @@
-// QBackend combines a backend Go application with a QtQuick/QML user interface using a magical seamless API.
+// qbackend seamlessly bridges a backend Go application with QtQuick/QML for user interfaces.
 //
-// This package establishes a connection to the clientside QML plugin and makes Go structs available as objects
-// within QML, complete with properties, methods, and signals. As much as possible, qbackend aims to stay out
-// of the way and let you write normal Go and normal QML that somehow work together.
+// This package bridges Go and QML for Go applications to implement QML frontends with nearly-seamless sharing
+// of objects and types. It aims to be normal and intuitive from either language, with as little API or
+// specialized code as possible.
+//
+// It also allows for out-of-process UI. All frontend/backend communication is socket-based; the Go application
+// does not use cgo or any native code. For all-in-one applications, the backend/qmlscene package provides a
+// simple wrapper to execute QML within the Go process.
+//
+// This package includes all of the backend API. In QML, the corresponding no.crimson.qbackend plugin provides
+// the objects and types exposed from the backend.
 //
 // Objects
 //
 // In the middle of everything is QObject. When QObject is embedded in a struct, that type is "a QObject" and
-// will be seen as a fully functional Qt object from the client. Exported fields are available as properties,
-// exported methods as object methods, and func fields become signals. Properties and parameters can contain
-// other QObjects, structs, maps, arrays, or any encodeable type. QObject adds a few useful methods, such as
-// signalling changes to a property.
+// will be a fully functional Qt object in the frontend. The exported fields become QML properties,
+// exported methods are callable functions, and func fields create Qt signals. Properties and parameters can
+// contain other QObjects, structs (as JS objects), maps, arrays, and any encodable type. QObject also embeds
+// a few useful methods for the backend implementation, such as signalling property changes.
 //
-// QObjects are used simply by giving them to the client within the properties and signals of other objects.
-// No initialization or registration is necessary, and objects are garbage collected normally when they're not
-// referenced in the backend or client. There is no need to treat them differently from any other type.
+//  // Go
+//  type Demo struct {
+//      qbackend.QObject
+//      Steps []*Demo
+//  }
+//  func (d *Demo) Run() {
+//      ...
+//  }
+//
+//
+//  // QML
+//  property var demo: Backend.topDemo
+//  property int numSteps: demo.steps.length
+//  onClicked: { demo.run(); demo.steps = [] }
+//
+// QObjects are used by passing them (by pointer) to the frontend in the properties or signals of other
+// objects. They do not need to be initialized explicitly, and they will be garbage collected normally once
+// there are no remaining references to the object from Go or QML. Generally, there is no need to treat them
+// differently from any other type.
+//
+// A singleton "root object" is always available within QML as Backend, which makes a useful starting point
+// for objects and API.
+//
+// Data Models
+//
+// For large, complex, or dynamic data used in QML views, Model provides a QAbstractListModel equivalent API.
+// An object which embeds Model, implements the ModelDataSource interface, and calls Model's methods for changes
+// to data is usable as a model anywhere in QML.
+//
+// Instantiable Types
+//
+// The objectss referenced so far are all created from the Go backend and given to the QML frontend. QML could
+// call a function on an existing object to get a new object, but couldn't create anything declaratively. For
+// this, we have instantiable types.
+//
+// Any QObject type registered during startup with Connection.RegisterType becomes instantiable. These are real
+// QML types and can be created and used declaratively like any other QML type:
+//
+//  // Go
+//  type Demo struct {
+//      qbackend.QObject
+//      Value int
+//  }
+//
+//  qb.RegisterType("Demo", &Demo{})
+//
+//  // QML
+//  import no.crimson.qbackend 1.0
+//
+//  Demo {
+//      value: 123
+//      onValueChanged: { ... }
+//  }
+// Optional interface methods allow the QObject to initialize values and act when construction is completed or
+// after QML destruction.
 //
 // Connection
 //
-// Connection handles all communication with the client over an arbitrary socket. Before starting a connection,
-// you must set a RootObject, which is a singleton QObject always available to the client -- a useful starting
-// point to write the application's API. Connection also registers factories for instantiable types, which can
-// be created declaratively like any other QML type.
+// Connection handles communication with the frontend and manages objects. It's used during during startup but
+// otherwise isn't usually important.
 //
-// There are no particular requirements for the connection socket. The QML plugin connects immediately when
-// imported using the URL in the root context qbackendUrl property, the -qbackend commandline argument, or
-// the QBACKEND_URL environment variable, in that order. The only currently supported scheme is "fd:n[,m]" for
-// a r/w socket fd or split read and write sockets.
+// Connection is created with a socket for communication with the frontend. Its documentation describes the
+// sockets and corresponding behavior of the QML plugin in more detail. In many cases, wrappers like
+// backend/qmlscene can be used to avoid dealing with sockets.
 //
-// QBackend guarantees that QObjects are not accessed outside of calls to methods of QObject or Connection.
-// Using Connection.Process or Connection.RunLockable, the application can control when Connection processes
-// messages and guarantee mutually exclusive execution. Applications with multiple goroutines using QObject
-// instances should consider using these for safe concurrency.
+// Most importantly, the RootObject must be assigned on the connection. This can be any QObject instance of your
+// choice. The root object is always available as the Backend singleton in QML. Instantiable types must also be
+// registered to the Connection before continuing; they cannot be added once the connection has started.
+//
+// Finally, the connection is started by calling Run() or (in a loop) Process(). Be aware that any members of
+// any initialized QObjects can be accessed during calls to Run, Process, or calls by the application to some
+// methods of this package. RunLockable() provides a sync.Locker for exclusive execution with Process(). See
+// those methods for details on avoiding concurrency issues.
 //
 // Executing QML
 //

@@ -28,7 +28,9 @@ func (cl *channelLocker) Unlock() {
 //
 // As noted on Process(), application data is only accessed during calls to Process or
 // other qbackend methods. Objects can be safely modified while holding this lock.
-// Other methods of Connection and QObject can be used while holding the lock.
+// Other methods of Connection and QObject can be used while holding the lock. However,
+// like all other Go locks, this lock is not recursive. Attempting to lock from within
+// a call to Process will deadlock.
 //
 // RunLockable also returns a channel, which will receive one error value and close
 // when the connection is closed.
