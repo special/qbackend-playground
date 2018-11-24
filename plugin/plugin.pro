@@ -3,7 +3,7 @@ CONFIG += plugin
 QT += qml quick core-private
 TARGET = qbackend
 
-IMPORT_PATH = QBackend
+IMPORT_PATH = no.crimson.qbackend
 target.path = $$[QT_INSTALL_QML]/$$IMPORT_PATH
 INSTALLS += target
 

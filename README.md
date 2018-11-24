@@ -9,7 +9,7 @@ QBackend combines a backend Go application with a QtQuick/QML user interface usi
 * Really, one line. It's `qbackend.QObject` (embedded in a struct).
 
 ##### QML Interfaces
-* The entire API: `import QBackend 1.0`, `Backend` is a singleton to help get things started.
+* The entire API: `import no.crimson.qbackend 1.0`, `Backend` is a singleton to help get things started.
 * Register a Go type factory (also one line), instantiate it declaratively in QML like any other type
 * Backends can provide objects that are also QAbstractListModel-style models
 
@@ -51,7 +51,7 @@ func main() {
 ```qml
 import QtQuick 2.9
 import QtQuick.Window 2.2
-import QBackend 1.0
+import no.crimson.qbackend 1.0
 
 Window {
     width: 600

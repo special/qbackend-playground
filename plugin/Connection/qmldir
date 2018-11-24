@@ -1,2 +1,2 @@
-module QBackend.Connection
+module no.crimson.qbackend.Connection
 plugin qbackend ..
