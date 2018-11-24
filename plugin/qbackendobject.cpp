@@ -91,6 +91,7 @@ BackendObjectPrivate::BackendObjectPrivate(const char *typeName, QObject *object
     : QBackendRemoteObject(object)
     , m_object(object)
     , m_connection(connection)
+    , m_instantiated(true)
 {
     // Newly instantiated object, generate an identifier
     m_identifier = QUuid::createUuid().toString().toUtf8();
@@ -99,6 +100,14 @@ BackendObjectPrivate::BackendObjectPrivate(const char *typeName, QObject *object
 
 BackendObjectPrivate::~BackendObjectPrivate()
 {
+    if (m_instantiated) {
+        // Will silently fail if the method isn't implemented
+        const QMetaObject *metaObject = m_object->metaObject();
+        int idx = metaObject->indexOfMethod("componentDestruction()");
+        if (idx >= 0) {
+            metaObject->method(idx).invoke(m_object);
+        }
+    }
     m_connection->removeObject(m_identifier);
 }
 

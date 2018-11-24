@@ -15,6 +15,7 @@ public:
 
     QBackendConnection *m_connection = nullptr;
     QByteArray m_identifier;
+    bool m_instantiated = false;
 
     QJsonObject m_dataObject;
     bool m_dataReady = false;
