@@ -440,8 +440,12 @@ func (c *Connection) sendEmit(obj QObject, method string, data []interface{}) er
 	return nil
 }
 
-// RegisterType registers types to allow the client to instantiate new objects. In QML,
-// these types are made available as real types under their names.
+// RegisterTypeFactory registers a type to be creatable from QML. Instances of these types
+// can be created, assigned properties, and used declaratively like any other QML type.
+//
+// The factory function is called to create a new instance. The QObject 't' should be a
+// pointer to the zero value of the type (&Type{}). This is used only for type definition,
+// and its value has no meaning. The factory function must always return this same type.
 //
 // RegisterType must be called before the connection starts (calling Process or Run).
 // There is a limit of 10 registered types; if this isn't enough, it could be increased.
@@ -454,7 +458,7 @@ func (c *Connection) sendEmit(obj QObject, method string, data []interface{}) er
 //     set all initial properties, equivalent to QQmlParserStatus.
 //
 // Instantiated objects are normal objects in every way, including for garbage collection.
-func (c *Connection) RegisterType(name string, t QObject, factory func() QObject) error {
+func (c *Connection) RegisterTypeFactory(name string, t QObject, factory func() QObject) error {
 	if c.started {
 		return fmt.Errorf("Type '%s' must be registered before the connection starts", name)
 	} else if len(c.instantiable) >= 10 {
@@ -474,6 +478,34 @@ func (c *Connection) RegisterType(name string, t QObject, factory func() QObject
 		Factory: factory,
 	}
 	return nil
+}
+
+// RegisterType registers a type to be creatable from QML. Instances of these types
+// can be created, assigned properties, and used declaratively like any other QML type.
+//
+// New instances are copied from the template object, including its values. This means
+// you can set fields for the instantiated type that are different from the zero value.
+// This is equivalent to a Go value assignment; it does not perform a deep copy.
+//
+// RegisterType must be called before the connection starts (calling Process or Run).
+// There is a limit of 10 registered types; if this isn't enough, it could be increased.
+//
+// QObject supports a few interfaces that are particularly useful with instantiable
+// types:
+//
+//   - If the type has an `InitObject()` method, it's called as the object is created
+//   - If the type has a `ComponentComplete()` method, it's called after the client has
+//     set all initial properties, equivalent to QQmlParserStatus.
+//
+// Instantiated objects are normal objects in every way, including for garbage collection.
+func (c *Connection) RegisterType(name string, template QObject) error {
+	t := reflect.Indirect(reflect.ValueOf(template))
+	factory := func() QObject {
+		obj := reflect.New(t.Type())
+		obj.Elem().Set(t)
+		return obj.Interface().(QObject)
+	}
+	return c.RegisterTypeFactory(name, template, factory)
 }
 
 func (c *Connection) typeIsAcknowledged(t *typeInfo) bool {
