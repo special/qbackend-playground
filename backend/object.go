@@ -26,7 +26,11 @@ const (
 type QObject interface {
 	json.Marshaler
 
+	// Connection returns the connection associated with this object.
 	Connection() *Connection
+	// Identifier is unique for each object. Objects can be found by their
+	// identifier from the Connection. The identifier is randomly assigned,
+	// unless it was initialized explicitly with Connection.InitObjectId.
 	Identifier() string
 	// Referenced returns true when there is a client-side reference to
 	// this object. When false, all signals are ignored and the object
@@ -45,13 +49,25 @@ type QObject interface {
 	Changed(property string)
 }
 
-// If a type embedding QObject implements QObjectHasInit, the InitObject
-// function will be called immediately after QObject is initialized. This
-// can be used to initialize fields automatically at the right time, or
-// even as a form of constructor.
+// If a QObject type implements QObjectHasInit, the InitObject function will
+// be called immediately after QObject is initialized. This can be used to
+// initialize fields automatically at the right time, or even as a form of
+// constructor.
 type QObjectHasInit interface {
 	QObject
 	InitObject()
+}
+
+// When instantiable QObjects are created from QML, these methods will be
+// called on construction (after all initial properties are set) and
+// destruction respectively if they are implemented. It is not necessary
+// to implement both methods.
+//
+// These methods are never called for objects that aren't created from QML.
+type QObjectHasStatus interface {
+	QObject
+	ComponentComplete()
+	ComponentDestruction()
 }
 
 type objectImpl struct {

@@ -446,12 +446,8 @@ func (c *Connection) sendEmit(obj QObject, method string, data []interface{}) er
 // RegisterType must be called before the connection starts (calling Process or Run).
 // There is a limit of 10 registered types; if this isn't enough, it could be increased.
 //
-// QObject supports a few interfaces that are particularly useful with instantiable
-// types:
-//
-//   - If the type has an `InitObject()` method, it's called as the object is created
-//   - If the type has a `ComponentComplete()` method, it's called after the client has
-//     set all initial properties, equivalent to QQmlParserStatus.
+// The methods described in QObjectHasInit and QObjectHasStatus are particularly useful
+// for instantiated types to handle object creation and destruction.
 //
 // Instantiated objects are normal objects in every way, including for garbage collection.
 func (c *Connection) RegisterTypeFactory(name string, t QObject, factory func() QObject) error {
@@ -486,12 +482,8 @@ func (c *Connection) RegisterTypeFactory(name string, t QObject, factory func() 
 // RegisterType must be called before the connection starts (calling Process or Run).
 // There is a limit of 10 registered types; if this isn't enough, it could be increased.
 //
-// QObject supports a few interfaces that are particularly useful with instantiable
-// types:
-//
-//   - If the type has an `InitObject()` method, it's called as the object is created
-//   - If the type has a `ComponentComplete()` method, it's called after the client has
-//     set all initial properties, equivalent to QQmlParserStatus.
+// The methods described in QObjectHasInit and QObjectHasStatus are particularly useful
+// for instantiated types to handle object creation and destruction.
 //
 // Instantiated objects are normal objects in every way, including for garbage collection.
 func (c *Connection) RegisterType(name string, template QObject) error {

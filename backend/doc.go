@@ -97,7 +97,7 @@
 //
 // The choice of how to manage executing the backend and QML client is up to the application. They can be
 // separate processes or a single Go process, they can execute together or rely on a daemon, and the client
-// or backend could be executed first. QBackend could use more convenient tools for managing this process.
+// or backend could be executed first. qbackend could use more convenient tools for managing this process.
 //
 // For applications that want to simply run as a Go binary and execute QML in-process, the backend/qmlscene
 // package provides a convenient wrapper for qbackend and https://github.com/special/qgoscene. This makes it
