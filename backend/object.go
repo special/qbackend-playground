@@ -17,12 +17,115 @@ const (
 
 // Add names of any functions in QObject to the blacklist in type.go
 
-// The QObject interface must be embedded in any struct that should export
-// a full object (as opposed to simple data).
+// The QObject interface is embedded in a struct to make that object appear
+// as a fully interactive object on the QML frontend. These objects are
+// equivalent to a Qt QObject with full support for properties, methods,
+// and signals.
 //
-// The QObject will be initialized automatically when qbackend encoding
-// encounters the object. It may also be initialized explicitly with
-// Connection.InitObject(), which is useful to avoid needing nil checks.
+//  type Thing struct {
+//      backend.QObject
+//
+//      Property []string
+//      Signal func(int) `qbackend:"value"`
+//  }
+//
+//  func (t *Thing) Method(otherThing *Thing) {
+//  }
+//
+//
+// Methods
+//
+// Exported methods of the struct can be called as methods on the object.
+// To match QML syntax, the first letter of the method name will be lowercase.
+// Any serializable (see below) types can be used in parameters, including
+// other QObjects. Methods are called from QML asynchronously and don't have
+// any return value.
+//
+// Properties
+//
+// Exported fields are properties of the object. Fields with a func type
+// or those tagged with `qbackend:"-"` or `json:"-"` are ignored. Properties
+// can be renamed by tagging the field with `json:"xxx"`. Like methods, the
+// first letter of the name is lowercase in QML.
+//
+// Properties are read-only by default. If a method named "setProp" exists
+// and takes one parameter of the correct type, the property "prop" will be
+// writable and will use that setter.
+//
+// Properties have change signals (e.g. "propChanged") automatically. When the
+// value of a field changes, call QObject.Changed() with the property name to
+// update the value and emit the change signal.
+//
+// Signals
+//
+// Signals are defined by exported fields with a func type and a tag with the
+// names of its parameters:
+//  ThingHappened func(string, string) `qbackend:"what,how"`
+// As usual, the first letter of the signal name is lowercase within QML. The
+// parameters must be explicitly named; these are the names of variables within
+// a QML signal handler. Signals are emitted asynchronously.
+//
+// During QObject initialization (see below), signal fields are assigned a
+// function to emit the signal. After initialization, signals can simply be
+// called like methods. Take care when emitting signals from objects that may not
+// have been used yet, because the signals may be nil. Custom functions can be
+// assigned to the field instead; they will not be replaced during initialization,
+// and QObject.Emit() can be used to emit the signal directly.
+//
+// Serializable Types
+//
+// Properties and parameters can contain any type serializable as JSON, pointers
+// to any QObject type, and any of these types within interfaces, structs, maps,
+// slices, and arrays. These are mapped as expected to QML and Javascript types,
+// with non-QObject structs as static JS objects. QObjects are mapped to the same
+// object instance.
+//
+// As an implementation detail, serialization uses MarshalJSON for all types other
+// than QObjects. QObject implements MarshalJSON to return a light reference to
+// the object without any values; serialization is not recursive through QObjects.
+// Serialization of the properties of a QObject happens internally. These details
+// may change.
+//
+// Initialization & QObject Methods
+//
+// QObjects usually don't need explicit initialization. When a QObject is encountered
+// in the properties or parameters of another object, it's initialized automatically.
+// Initialization assigns the embedded QObject interface, a unique object ID, and sets
+// handlers on any nil signal fields. Objects can be initialized immediately with
+// Connection.InitObject or Connection.InitObjectId.
+//
+// The embedded QObject is initially nil, meaning that calls to any of QObject's methods
+// will panic. Any unassigned signals will also be nil until the QObject is initialized.
+// Take care to check before calling these methods if the object might not have been
+// used.
+//
+// Garbage Collection
+//
+// QObject types are garbage collected the same as any other type in Go. Once there
+// are no references to an object from QML or within the properties of another
+// referenced QObject, pointers within qbackend will be released and normal garbage
+// collection takes place. There is no need for to handle these differently.
+//
+// Specifically, the frontend keeps a reference on any object it does or could use,
+// so objects can never disappear from under it. During serialization objects keep
+// count of references in the properties of other objects, which tracks objects that
+// are available to the frontend which it may have not requested yet. If both of
+// these are unreferenced, a grace period of a few seconds handles object references
+// that may be "in flight" as parameters and debounces.
+//
+// At the end of that period, there's no valid way for the object to be used
+// without first appearing in the serialization of other properties or parameters.
+// The unreferenced object is "deactivated", which removes any pointers held by
+// qbackend to allow garbage collection, but does not clear the object's unique ID.
+//
+// If a deactivated object is used again, the object initialization scan reactivates
+// it under the same ID and it can be used as if nothing had changed.
+//
+// Instantiable Types
+//
+// QObject types registered through Connection.RegisterType() can be created from QML
+// declaratively, like any other native type. See that method and the package
+// documentation for details.
 type QObject interface {
 	json.Marshaler
 

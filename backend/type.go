@@ -10,15 +10,15 @@ import (
 // from a type embedding that interface than this :/
 var methodBlacklist []string = []string{
 	"MarshalJSON",
-	"MarshalObject",
 	"Connection",
 	"Identifier",
 	"Referenced",
-	"Invoke",
 	"Emit",
 	"ResetProperties",
 	"Changed",
 	"InitObject",
+	"ComponentComplete",
+	"ComponentDestruction",
 }
 
 // typeInfo is the internal parsing and representation of a Go struct
