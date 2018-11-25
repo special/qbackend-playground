@@ -17,8 +17,6 @@ var methodBlacklist []string = []string{
 	"ResetProperties",
 	"Changed",
 	"InitObject",
-	"ComponentComplete",
-	"ComponentDestruction",
 }
 
 // typeInfo is the internal parsing and representation of a Go struct
