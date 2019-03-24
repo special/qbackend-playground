@@ -135,9 +135,14 @@ QVariant QBackendModel::data(const QModelIndex &index, int role) const
         return QVariant();
 
     const QJSValue &row = d->fetchRow(index.row());
-    // Note that this is a variant containing a QJSValue, not a QJSValue converted
-    // to a variant. Hopefully this is more efficient for QML to deal with.
-    return QVariant::fromValue(row.property(role - Qt::UserRole));
+    QJSValue data = row.property(role - Qt::UserRole);
+
+    if (data.isQObject())
+        return QVariant::fromValue(data.toQObject());
+    else if ((data.isArray() || data.isObject()) && !data.isVariant())
+        return QVariant::fromValue(data);
+    else
+        return data.toVariant();
 }
 
 QJSValue BackendModelPrivate::fetchRow(int row)
