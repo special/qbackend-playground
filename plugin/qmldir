@@ -1,2 +1,2 @@
-module no.crimson.qbackend
-plugin qbackend
+module Crimson.QBackend
+plugin declarative_qbackend

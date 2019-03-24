@@ -8,7 +8,7 @@
 // does not use cgo or any native code. For all-in-one applications, the backend/qmlscene package provides a
 // simple wrapper to execute QML within the Go process.
 //
-// This package includes all of the backend API. In QML, the corresponding no.crimson.qbackend plugin provides
+// This package includes all of the backend API. In QML, the corresponding Crimson.QBackend plugin provides
 // the objects and types exposed from the backend.
 //
 // Objects
@@ -66,7 +66,7 @@
 //  qb.RegisterType("Demo", &Demo{})
 //
 //  // QML
-//  import no.crimson.qbackend 1.0
+//  import Crimson.QBackend 1.0
 //
 //  Demo {
 //      value: 123

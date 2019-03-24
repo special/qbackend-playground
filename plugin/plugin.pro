@@ -1,18 +1,12 @@
 TEMPLATE = lib
-CONFIG += plugin
-QT += qml quick core-private
 TARGET = qbackend
+TARGETPATH = Crimson/QBackend
+IMPORT_VERSION = 1.0
 
-IMPORT_PATH = no.crimson.qbackend
-target.path = $$[QT_INSTALL_QML]/$$IMPORT_PATH
-INSTALLS += target
-
-qmldir.files = qmldir
-qmldir.path = $$target.path
-INSTALLS += qmldir
+QT += qml quick core-private
 
 qmldirConnection.files = Connection/qmldir
-qmldirConnection.path = $$target.path/Connection/
+qmldirConnection.path = $$[QT_INSTALL_QML]/$$TARGETPATH/Connection/
 INSTALLS += qmldirConnection
 
 SOURCES += \
@@ -31,3 +25,5 @@ HEADERS += \
     qbackendmodel.h \
     qbackendmodel_p.h \
     instantiable.h
+
+load(qml_plugin)

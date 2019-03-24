@@ -14,7 +14,7 @@ void QBackendPlugin::registerTypes(const char *uri)
     qRegisterMetaType<QBackendObject*>();
     qRegisterMetaType<QBackendModel*>();
 
-    if (QByteArray(uri) == "no.crimson.qbackend") {
+    if (QByteArray(uri) == "Crimson.QBackend") {
         // Make the connection immediately, so it will have an opportunity to register
         // types dynamically. It cannot complete the root object until a QQmlEngine is
         // available, which happens from the singleton callback.
@@ -54,7 +54,7 @@ void QBackendPlugin::registerTypes(const char *uri)
                 return root;
             }
         );
-    } else if (QByteArray(uri) == "no.crimson.qbackend.Connection") {
+    } else if (QByteArray(uri) == "Crimson.QBackend.Connection") {
         // QBackend.Connection exposes explicit types for the connection, including a
         // type to execute a new process for the backend.
         qmlRegisterType<QBackendConnection>(uri, 1, 0, "BackendConnection");
