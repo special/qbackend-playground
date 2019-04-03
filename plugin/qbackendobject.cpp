@@ -108,7 +108,7 @@ BackendObjectPrivate::~BackendObjectPrivate()
             metaObject->method(idx).invoke(m_object);
         }
     }
-    m_connection->removeObject(m_identifier);
+    m_connection->removeObject(m_identifier, this);
 }
 
 void BackendObjectPrivate::objectFound(const QJsonObject &object)
@@ -321,14 +321,8 @@ QJSValue BackendObjectPrivate::jsonValueToJSValue(QJSEngine *engine, const QJson
     case QJsonValue::Object:
         {
             QJsonObject object = value.toObject();
-            if (object.value("_qbackend_").toString() == "object") {
-                QObject *qobj = m_connection->ensureObject(object);
-                if (!qobj) {
-                    return QJSValue(QJSValue::NullValue);
-                } else {
-                    return engine->newQObject(qobj);
-                }
-            }
+            if (object.value("_qbackend_").toString() == "object")
+                return m_connection->ensureJSObject(object);
 
             QJSValue v = engine->newObject();
             for (auto it = object.constBegin(); it != object.constEnd(); it++) {

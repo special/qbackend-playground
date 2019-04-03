@@ -593,10 +593,15 @@ void QBackendConnection::resetObjectData(const QByteArray& identifier, bool sync
     }
 }
 
-void QBackendConnection::removeObject(const QByteArray& identifier)
+void QBackendConnection::removeObject(const QByteArray& identifier, QBackendRemoteObject *expectedObj)
 {
-    if (!m_objects.contains(identifier)) {
+    QBackendRemoteObject *obj = m_objects.value(identifier);
+    if (!obj) {
         qCWarning(lcConnection) << "Removing object identifier" << identifier << "on connection" << this << "which isn't in list";
+        return;
+    } else if (obj != expectedObj) {
+        qCDebug(lcConnection) << "Ignoring remove of object" << identifier << "because expected object" << expectedObj << "does not match" << obj;
+        // This can happen naturally, e.g. for the case described in ensureJSObject. It's ok to ignore.
         return;
     }
 
@@ -648,6 +653,41 @@ QObject *QBackendConnection::ensureObject(const QByteArray &identifier, const QJ
     }
 
     return proxyObject->object();
+}
+
+QJSValue QBackendConnection::ensureJSObject(const QJsonObject &data)
+{
+    return ensureJSObject(data.value("identifier").toString().toUtf8(), data.value("type").toObject());
+}
+
+// ensureJSObject is equivalent to ensureObject, but returns a QJSValue wrapping that object.
+// This should be used instead of calling newQObject directly, because it covers corner cases.
+QJSValue QBackendConnection::ensureJSObject(const QByteArray &identifier, const QJsonObject &type)
+{
+    QObject *obj = ensureObject(identifier, type);
+    if (!obj)
+        return QJSValue(QJSValue::NullValue);
+
+    QJSValue val = qmlEngine()->newQObject(obj);
+    if (!val.isQObject()) {
+        // This can happen if obj was queued for deletion by the JS engine but has not yet
+        // been deleted. ~BackendObjectPrivate won't have run, so ensureObject will still
+        // return the same soon-to-be-dead instance.
+        //
+        // This is safe because removeObject won't deref the old object, because it doesn't
+        // match. The duplicate OBJECT_REF is ignored, because it is a boolean reference,
+        // not a reference counter.
+        qCDebug(lcConnection) << "Replacing object" << identifier << "because the existing"
+            << "instance was queued for deletion by JS";
+        m_objects.remove(identifier);
+        obj = ensureObject(identifier, type);
+        if (obj)
+            val = qmlEngine()->newQObject(obj);
+        if (!val.isQObject())
+            return QJSValue(QJSValue::NullValue);
+    }
+
+    return val;
 }
 
 QMetaObject *QBackendConnection::newTypeMetaObject(const QJsonObject &type)

@@ -7,6 +7,7 @@
 #include <QPointer>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QJSValue>
 #include <functional>
 
 class QBackendObject;
@@ -48,6 +49,8 @@ public:
     Q_INVOKABLE QObject *object(const QByteArray &identifier) const;
     QObject *ensureObject(const QJsonObject &object);
     QObject *ensureObject(const QByteArray &identifier, const QJsonObject &type);
+    QJSValue ensureJSObject(const QJsonObject &object);
+    QJSValue ensureJSObject(const QByteArray &identifier, const QJsonObject &type);
 
     void registerTypes(const char *uri);
     void blockReadSignals(bool blocked);
@@ -55,7 +58,7 @@ public:
     void invokeMethod(const QByteArray& identifier, const QString& method, const QJsonArray& params);
     void addObjectProxy(const QByteArray& identifier, QBackendRemoteObject* object);
     void addObjectInstantiated(const QString &typeName, const QByteArray& identifier, QBackendRemoteObject* object);
-    void removeObject(const QByteArray& identifier);
+    void removeObject(const QByteArray& identifier, QBackendRemoteObject *object);
     void resetObjectData(const QByteArray& identifier, bool synchronous = false);
 
     void moveToThread(QThread *thread);
