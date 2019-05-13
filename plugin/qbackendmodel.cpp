@@ -212,7 +212,7 @@ void BackendModelPrivate::cleanRowCache(int rowHint)
         auto first = m_rowData.begin();
         auto last = m_rowData.end()-1;
 
-        if (rowHint-first.key() >= last.key()-rowHint) {
+        if (std::abs(rowHint-first.key()) >= std::abs(last.key()-rowHint)) {
             m_rowData.erase(first);
         } else {
             m_rowData.erase(last);
