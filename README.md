@@ -1,86 +1,25 @@
-# QBackend
+# Seamless Go + QML applications
 
-QBackend combines a backend Go application with a QtQuick/QML user interface using a magical seamless API on both sides. It allows you to write a Go application naturally (without boilerplate and weird UI adaptors) and a user interface in QML that does exactly what you'd normally expect it to do.
+QBackend connects a Go application to a QtQuick UI with transparent remote objects in seamless and natural API.
 
-##### Go Backends
-* Go structs become usable as normal objects in QML with one line of code. No initialization necessary.
-* Objects have properties, methods, and signals. Feel free to pass around a map of structs with arrays of interfaces containing objects.
-* Objects are garbage collected normally when no longer in use from Go and QML
-* Really, one line. It's `qbackend.QObject` (embedded in a struct).
+#### Go Backend
+* Go structs become fully featured objects in QML
+* Objects have properties (exported fields), methods, and signals (exported func fields) from the struct
+* No object/type initialization or boilerplate needed; just embed `qbackend.QObject`
+* Garbage collection works as usual once an object isn't referenced from Go or QML
+* Fields and parameters can be bool, ints, floats, or strings and nested arrays, maps, interfaces, or structs.
+* Structs with QObject are passed to or from QML by reference
 
-##### QML Interfaces
-* The entire API: `import Crimson.QBackend 1.0`, `Backend` is a singleton to help get things started.
-* Register a Go type factory (also one line), instantiate it declaratively in QML like any other type
-* Backends can provide objects that are also QAbstractListModel-style models
+#### QML User Interface
+* Backend API is completely transparent; just `import Crimson.QBackend 1.0`
+* The singleton `Backend` is a Go-side root object to anchor your API
+* Backend objects implementing a model API can be used as QAbstractItemModel directly
+* Instantiable types defined in Go can be created declaratively (`YourType { }`) in QML
 
-##### Flexible
-* Socket based and optionally split-process; no cgo, no need to link Qt
-* There's also a convenient package to run the backend and QML in one process
-* Fairly reasonable options for managing concurrency with other Go code
+#### Convenience
+* The optional `qmlscene` package runs QML in-process for all in one binaries
 
-### How It Looks
-
-###### magic.go
-```go
-package main
-
-import (
-	qbackend "github.com/CrimsonAS/qbackend/backend"
-	"github.com/CrimsonAS/qbackend/backend/qmlscene"
-)
-
-type Root struct {
-	qbackend.QObject
-	Message         string
-	SomethingHappen func()
-}
-
-func (r *Root) SetMessage(msg string) {
-	r.Message = msg
-	r.Changed("Message")
-	r.SomethingHappen() // emit signal
-}
-
-func main() {
-	qmlscene.Connection().RootObject = &Root{Message: "It's magic"}
-	qmlscene.ExecScene("magic.qml")
-}
-```
-
-###### magic.qml
-```qml
-import QtQuick 2.9
-import QtQuick.Window 2.2
-import Crimson.QBackend 1.0
-
-Window {
-    width: 600
-    height: 400
-    visible: true
-
-    Text {
-        anchors.centerIn: parent
-        font.pixelSize: 24
-        text: Backend.message
-    }
-
-    TextInput {
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        anchors.margins: 8
-        focus: true
-        onTextEdited: Backend.message = text
-    }
-
-    Connections {
-        target: Backend
-        onSomethingHappen: console.log("something happened!")
-    }
-}
-```
-
-### Why?
+## Why?
 
 Go is great, but the options for UIs aren't. QtQuick is easy, flexible, and maturing. I enjoy using both of them, and I want to use them together.
 
@@ -88,15 +27,15 @@ Go is great, but the options for UIs aren't. QtQuick is easy, flexible, and matu
 
 Go and Qt both have powerful object reflection, so it's possible to dynamically create types and build essentially native objects. The potential exists for seamless APIs that don't feel like an intrusive hack bridging between languages.
 
-There is interesting potential in multiprocess graphical applications.
+There is interesting potential in multiprocess graphical applications, too. There is no need to rely on cgo for this design.
 
-### How To Use
+## Usage
 
 TODO: Documentation ;)
 
 Until then, examples and code comments are all you get.
 
-### How It Works
+## How It Works
 
 TODO: Design documentation!
 
