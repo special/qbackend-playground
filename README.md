@@ -1,4 +1,5 @@
 # Seamless Go + QML applications
+[![GoDoc](https://godoc.org/github.com/CrimsonAS/qbackend/backend?status.svg)](https://godoc.org/github.com/CrimsonAS/qbackend/backend)
 
 QBackend connects a Go application to a QtQuick UI with transparent remote objects in seamless and natural API.
 
