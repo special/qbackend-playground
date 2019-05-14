@@ -18,59 +18,81 @@ import (
 	"github.com/special/qgoscene"
 )
 
-var connection *qbackend.Connection
-var scene *qgoscene.Scene
+// Connection is the instance of qbackend.Connection used by the scene
+//
+// Connection is created automatically on init and will never be nil.
+var Connection *qbackend.Connection
+
+// Scene is the scene that has been created, if any
+//
+// Do not call Scene.Exec directly unless Connection has already been
+// started. Call Run instead.
+var Scene *qgoscene.Scene
+
 var rB, wB, rF, wF *os.File
 
-func Connection() *qbackend.Connection {
-	if connection == nil {
-		rB, wB, _ = os.Pipe()
-		rF, wF, _ = os.Pipe()
-		connection = qbackend.NewConnectionSplit(rF, wB)
-	}
-	return connection
+func init() {
+	rB, wB, _ = os.Pipe()
+	rF, wF, _ = os.Pipe()
+	Connection = qbackend.NewConnectionSplit(rF, wB)
 }
 
 func sceneArgs() []string {
 	return append(os.Args, []string{"-qbackend", fmt.Sprintf("fd:%d,%d", rB.Fd(), wF.Fd())}...)
 }
 
-func Scene() *qgoscene.Scene {
-	return scene
-}
-
-func LoadScene(qmlRootFile string) *qgoscene.Scene {
-	if scene != nil {
+// NewScene creates a new scene from a QML file and returns it.
+//
+// The new scene is also available as qmlscene.Scene and can be used to change
+// import paths and context properties.
+//
+// This function will panic if a scene has already been created.
+func NewScene(qmlFile string) *qgoscene.Scene {
+	if Scene != nil {
 		panic("qmlscene does not support multiple scenes")
 	}
-	scene = qgoscene.NewScene(qmlRootFile, sceneArgs())
-	return scene
+	Scene = qgoscene.NewScene(qmlFile, sceneArgs())
+	return Scene
 }
 
-func LoadSceneData(qmlString string) *qgoscene.Scene {
-	if scene != nil {
+// NewSceneFromData creates a new scene from a string of QML and returns it.
+//
+// The new scene is also available as qmlscene.Scene and can be used to change
+// import paths and context properties.
+//
+// This function will panic if a scene has already been created.
+func NewSceneFromData(qml string) *qgoscene.Scene {
+	if Scene != nil {
 		panic("qmlscene does not support multiple scenes")
 	}
-	scene = qgoscene.NewSceneData(qmlString, sceneArgs())
-	return scene
+	Scene = qgoscene.NewSceneData(qml, sceneArgs())
+	return Scene
 }
 
-func Exec() {
-	if scene == nil {
+// Run starts the QML application and connection if necessary.
+//
+// A scene must have already been created with NewScene or NewSceneFromData.
+// If Connection has not been started yet, it will run in a goroutine. Start
+// the connection manually before calling Run for more control. Run does not
+// return. The process will exit when the Qt application exits.
+func Run() {
+	if Scene == nil {
 		panic("qmlscene executed without a scene loaded")
 	}
-	if !connection.Started() {
-		go connection.Run()
+	if !Connection.Started() {
+		go Connection.Run()
 	}
-	os.Exit(scene.Exec())
+	os.Exit(Scene.Exec())
 }
 
-func ExecScene(qmlRootFile string) {
-	LoadScene(qmlRootFile)
-	Exec()
+// RunFile is equivalent to NewScene followed by Run
+func RunFile(qmlFile string) {
+	NewScene(qmlFile)
+	Run()
 }
 
-func ExecSceneData(qmlString string) {
-	LoadSceneData(qmlString)
-	Exec()
+// RunQML is equivalent to NewSceneFromData followed by Run
+func RunQML(qml string) {
+	NewSceneFromData(qml)
+	Run()
 }
