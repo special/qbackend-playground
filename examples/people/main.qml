@@ -110,7 +110,7 @@ Window {
         width: parent.width
 
         Button {
-            height: childrenRect.height * 1.5
+            height: implicitHeight * 2
             width: parent.width
             text: "Add"
             onClicked: {
