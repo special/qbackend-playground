@@ -6,8 +6,12 @@
 //
 // In simple cases, an application can execute with:
 //
-//     qmlscene.Connection().RootObject = &Root{...}
-//     qmlscene.ExecScene("main.qml")
+//	type Root struct {
+//		qbackend.QObject
+//	}
+//
+//	qmlscene.Connection.RootObject = &Root{}
+//	qmlscene.RunFile("main.qml")
 package qmlscene
 
 import (
