@@ -24,12 +24,19 @@ var methodBlacklist []string = []string{
 // into a qbackend object type. It encodes into the typeinfo structure
 // expected by the client as the value for an object type.
 type typeInfo struct {
-	Name       string              `json:"name"`
-	Properties map[string]string   `json:"properties"`
-	Methods    map[string][]string `json:"methods"`
-	Signals    map[string][]string `json:"signals"`
+	Name       string                `json:"name"`
+	Properties map[string]string     `json:"properties"`
+	Methods    map[string]typeMethod `json:"methods"`
+	Signals    map[string][]string   `json:"signals"`
 
 	propertyFieldIndex map[string][]int
+}
+
+type typeMethod struct {
+	// list of types for arguments
+	Args []string `json:"args"`
+	// type of return values
+	Return []string `json:"return"`
 }
 
 var knownTypeInfo = make(map[reflect.Type]*typeInfo)
@@ -180,7 +187,7 @@ func parseType(t reflect.Type) (*typeInfo, error) {
 
 	typeInfo := &typeInfo{
 		Properties:         make(map[string]string),
-		Methods:            make(map[string][]string),
+		Methods:            make(map[string]typeMethod),
 		Signals:            make(map[string][]string),
 		propertyFieldIndex: make(map[string][]int),
 	}
@@ -213,14 +220,18 @@ func parseType(t reflect.Type) (*typeInfo, error) {
 		}
 
 		name := typeMethodName(method)
+		var tm typeMethod
 
-		var paramTypes []string
 		for p := 1; p < methodType.NumIn(); p++ {
 			inType := methodType.In(p)
-			paramTypes = append(paramTypes, typeInfoTypeName(inType))
+			tm.Args = append(tm.Args, typeInfoTypeName(inType))
+		}
+		for p := 0; p < methodType.NumOut(); p++ {
+			outType := methodType.Out(p)
+			tm.Return = append(tm.Return, typeInfoTypeName(outType))
 		}
 
-		typeInfo.Methods[name] = paramTypes
+		typeInfo.Methods[name] = tm
 	}
 
 	knownTypeInfo[t] = typeInfo

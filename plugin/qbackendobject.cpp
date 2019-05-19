@@ -465,7 +465,7 @@ std::pair<QString,QString> qtTypesFromType(const QString &type)
  *     "id": { "type": "int", "readonly": true }
  *   },
  *   "methods": {
- *     "greet": [ "string", "bool" ]
+ *     "greet": { "args": [ "string", "bool" ], "return": [ "string" ] }
  *   },
  *   "signals": {
  *     "died": [ "string", "int" ]
@@ -546,20 +546,31 @@ QMetaObject *metaObjectFromType(const QJsonObject &type, const QMetaObject *supe
 
     QJsonObject methods = type.value("methods").toObject();
     for (auto it = methods.constBegin(); it != methods.constEnd(); it++) {
+        QJsonObject info = it.value().toObject();
         QString name = it.key();
         QString signature = name + "(";
-        QJsonArray paramTypes = it.value().toArray();
-        for (const QJsonValue &type : paramTypes) {
+        for (const QJsonValue &type : info.value("args").toArray()) {
             signature += qtTypesFromType(type.toString()).first + ",";
         }
         if (signature.endsWith(",")) {
             signature.chop(1);
         }
         signature += ")";
-        qCDebug(lcObject) << " -- method:" << name << signature;
+
+        if (lcObject().isDebugEnabled()) {
+            QStringList rv;
+            for (const auto &v : info.value("return").toArray()) {
+                rv.append(qtTypesFromType(v.toString()).first);
+            }
+            if (!rv.isEmpty()) {
+                qCDebug(lcObject) << " -- method:" << name << signature << "return:" << rv.join(", ");
+            } else {
+                qCDebug(lcObject) << " -- method:" << name << signature;
+            }
+        }
         b.addMethod(signature.toUtf8());
 
-        if (name.startsWith("set") && paramTypes.size() == 1) {
+        if (name.startsWith("set") && info.value("args").toArray().count() == 1) {
             QString propName = name.mid(3);
             if (!propName.isEmpty()) {
                 propName[0] = propName[0].toLower();
