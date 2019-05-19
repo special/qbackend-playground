@@ -14,6 +14,7 @@
 #include "qbackendobject.h"
 #include "qbackendobject_p.h"
 #include "qbackendconnection.h"
+#include "promise.h"
 
 Q_LOGGING_CATEGORY(lcObject, "backend.object")
 
@@ -284,6 +285,12 @@ int BackendObjectPrivate::metacall(QMetaObject::Call c, int id, void **argv)
                     }
                     break;
                 }
+            }
+
+            if (method.returnType() != QMetaType::Void && argv[0]) {
+                Q_ASSERT(method.returnType() == qMetaTypeId<QJSValue>());
+                Promise *p = new Promise(m_connection->qmlEngine());
+                *reinterpret_cast<QJSValue*>(argv[0]) = std::move(p->value());
             }
 
             m_connection->invokeMethod(m_identifier, QString::fromUtf8(method.name()), args);
@@ -568,7 +575,12 @@ QMetaObject *metaObjectFromType(const QJsonObject &type, const QMetaObject *supe
                 qCDebug(lcObject) << " -- method:" << name << signature;
             }
         }
-        b.addMethod(signature.toUtf8());
+
+        auto m = b.addMethod(signature.toUtf8());
+        if (info.value("return").toArray().count() > 0) {
+            // The method will return a promise
+            m.setReturnType("QJSValue");
+        }
 
         if (name.startsWith("set") && info.value("args").toArray().count() == 1) {
             QString propName = name.mid(3);

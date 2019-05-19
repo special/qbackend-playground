@@ -14,7 +14,8 @@ SOURCES += \
     qbackendconnection.cpp \
     qbackendprocess.cpp \
     qbackendobject.cpp \
-    qbackendmodel.cpp
+    qbackendmodel.cpp \
+    promise.cpp
 
 HEADERS += \
     plugin.h \
@@ -24,6 +25,7 @@ HEADERS += \
     qbackendobject_p.h \
     qbackendmodel.h \
     qbackendmodel_p.h \
-    instantiable.h
+    instantiable.h \
+    promise.h
 
 load(qml_plugin)
