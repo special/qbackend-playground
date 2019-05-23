@@ -159,11 +159,18 @@ void BackendObjectPrivate::methodReturned(const QByteArray& returnId, const QJso
     if (!promise)
         return;
 
-    auto jsValue = jsonValueToJSValue(m_connection->qmlEngine(), value);
     if (isError) {
-        promise->reject(jsValue);
+        promise->reject(jsonValueToJSValue(m_connection->qmlEngine(), value));
     } else {
-        promise->resolve(jsValue);
+        // Unwrap the return values array if appropriate
+        QJsonValue rv = value;
+        QJsonArray values = rv.toArray();
+        if (values.count() == 0) {
+            rv = QJsonValue();
+        } else if (values.count() == 1) {
+            rv = values[0];
+        }
+        promise->resolve(jsonValueToJSValue(m_connection->qmlEngine(), rv));
     }
 
     // This object wraps the JS Promise object. QML never interacts with
@@ -600,10 +607,10 @@ QMetaObject *metaObjectFromType(const QJsonObject &type, const QMetaObject *supe
         }
 
         auto m = b.addMethod(signature.toUtf8());
-        if (info.value("return").toArray().count() > 0) {
-            // The method will return a promise
-            m.setReturnType("QJSValue");
-        }
+        // Return promises from all methods, even if there is no explicit return value.
+        // They may still return errors and this provides a maybe-useful way to tell
+        // when a call has finished.
+        m.setReturnType("QJSValue");
 
         if (name.startsWith("set") && info.value("args").toArray().count() == 1) {
             QString propName = name.mid(3);
