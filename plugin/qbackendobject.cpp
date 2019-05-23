@@ -110,6 +110,8 @@ BackendObjectPrivate::~BackendObjectPrivate()
         }
     }
     m_connection->removeObject(m_identifier, this);
+    for (auto p : m_promises)
+        delete p;
 }
 
 void BackendObjectPrivate::objectFound(const QJsonObject &object)
@@ -149,6 +151,24 @@ void BackendObjectPrivate::methodInvoked(const QString &name, const QJsonArray &
 
         break;
     }
+}
+
+void BackendObjectPrivate::methodReturned(const QByteArray& returnId, const QJsonValue& value, bool isError)
+{
+    auto promise = m_promises.take(returnId);
+    if (!promise)
+        return;
+
+    auto jsValue = jsonValueToJSValue(m_connection->qmlEngine(), value);
+    if (isError) {
+        promise->reject(jsValue);
+    } else {
+        promise->resolve(jsValue);
+    }
+
+    // This object wraps the JS Promise object. QML never interacts with
+    // the wrapper, so it's safe to delete immediately.
+    delete promise;
 }
 
 void BackendObjectPrivate::classBegin()
@@ -291,9 +311,12 @@ int BackendObjectPrivate::metacall(QMetaObject::Call c, int id, void **argv)
                 Q_ASSERT(method.returnType() == qMetaTypeId<QJSValue>());
                 Promise *p = new Promise(m_connection->qmlEngine());
                 *reinterpret_cast<QJSValue*>(argv[0]) = std::move(p->value());
-            }
 
-            m_connection->invokeMethod(m_identifier, QString::fromUtf8(method.name()), args);
+                auto returnId = m_connection->invokeMethodWithReturn(m_identifier, QString::fromUtf8(method.name()), args);
+                m_promises.insert(returnId, p);
+            } else {
+                m_connection->invokeMethod(m_identifier, QString::fromUtf8(method.name()), args);
+            }
         }
 
         id -= count;

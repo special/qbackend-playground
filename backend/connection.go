@@ -312,10 +312,28 @@ func (c *Connection) Process() error {
 					c.fatal("invoke with invalid parameters of %s on %s", method, identifier)
 					break
 				}
+				returnId, _ := msg["return"].(string)
 
-				if err := impl.invoke(method, params...); err != nil {
-					c.warn("invoke of %s on %s failed: %s", method, identifier, err)
-					break
+				re, err := impl.invoke(method, params...)
+				if returnId != "" {
+					var errString string
+					if err != nil {
+						errString = err.Error()
+					}
+
+					c.sendMessage(struct {
+						messageBase
+						Identifier string        `json:"identifier"`
+						Return     string        `json:"return"`
+						Error      string        `json:"error,omitempty"`
+						Value      []interface{} `json:"value,omitempty"`
+					}{
+						messageBase{"INVOKE_RETURN"},
+						impl.Identifier(),
+						returnId,
+						errString,
+						re,
+					})
 				}
 			} else {
 				c.fatal("invoke of %s on unknown object %s", method, identifier)

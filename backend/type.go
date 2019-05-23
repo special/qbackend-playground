@@ -41,6 +41,7 @@ type typeMethod struct {
 
 var knownTypeInfo = make(map[reflect.Type]*typeInfo)
 var qobjInterfaceType = reflect.TypeOf((*AnyQObject)(nil)).Elem()
+var errorType = reflect.TypeOf((*error)(nil)).Elem()
 
 func typeIsQObject(t reflect.Type) bool {
 	return reflect.PtrTo(t).Implements(qobjInterfaceType)
@@ -228,6 +229,12 @@ func parseType(t reflect.Type) (*typeInfo, error) {
 		}
 		for p := 0; p < methodType.NumOut(); p++ {
 			outType := methodType.Out(p)
+
+			if p == methodType.NumOut()-1 && outType == errorType {
+				// Skip the last output if it is an error; invoke will handle
+				// these separately.
+				continue
+			}
 			tm.Return = append(tm.Return, typeInfoTypeName(outType))
 		}
 

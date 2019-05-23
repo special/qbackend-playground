@@ -8,6 +8,7 @@
 #include <QQmlContext>
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#include <QUuid>
 
 #include "qbackendconnection.h"
 #include "qbackendobject.h"
@@ -490,6 +491,21 @@ void QBackendConnection::handleMessage(const QJsonObject &cmd)
         if (obj) {
             obj->methodInvoked(method, params);
         }
+    } else if (command == "INVOKE_RETURN") {
+        QByteArray objectId = cmd.value("identifier").toString().toUtf8();
+        QByteArray returnId = cmd.value("return").toString().toUtf8();
+        auto obj = m_objects.value(objectId);
+
+        if (obj) {
+            auto error = cmd.value("error");
+            if (!error.isUndefined()) {
+                qCDebug(lcConnection) << "Invoked call" << returnId << "returned error:" << error;
+                obj->methodReturned(returnId, error, true);
+            } else {
+                qCDebug(lcConnection) << "Invoked call" << returnId << "returned:" << cmd.value("value");
+                obj->methodReturned(returnId, cmd.value("value"), false);
+            }
+        }
     } else {
         qCWarning(lcConnection) << "Unknown command" << command << "from backend";
         connectionError("unknown command");
@@ -579,15 +595,29 @@ QJsonObject QBackendConnection::waitForMessage(const char *waitType, std::functi
     return re;
 }
 
-void QBackendConnection::invokeMethod(const QByteArray& identifier, const QString& method, const QJsonArray& params)
+void QBackendConnection::invokeMethod(const QByteArray& objectIdentifier, const QString& method, const QJsonArray& params)
 {
-    qCDebug(lcConnection) << "Invoking " << identifier << method << params;
+    qCDebug(lcConnection) << "Invoking " << objectIdentifier << method << params;
     write(QJsonObject{
           {"command", "INVOKE"},
-          {"identifier", QString::fromUtf8(identifier)},
+          {"identifier", QString::fromUtf8(objectIdentifier)},
           {"method", method},
           {"parameters", params}
     });
+}
+
+QByteArray QBackendConnection::invokeMethodWithReturn(const QByteArray& objectIdentifier, const QString& method, const QJsonArray& params)
+{
+    auto returnId = QUuid::createUuid().toString();
+    qCDebug(lcConnection) << "Invoking returnable call" << returnId << "on object" << objectIdentifier << method << params;
+    write(QJsonObject{
+          {"command", "INVOKE"},
+          {"identifier", QString::fromUtf8(objectIdentifier)},
+          {"return", returnId},
+          {"method", method},
+          {"parameters", params}
+    });
+    return returnId.toUtf8();
 }
 
 void QBackendConnection::addObjectProxy(const QByteArray& identifier, QBackendRemoteObject* proxy)

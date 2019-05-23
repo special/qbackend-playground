@@ -290,18 +290,23 @@ func (o *QObject) Referenced() bool {
 
 // Invoke calls the named method of the object, converting or
 // unmarshaling parameters as necessary. An error is returned if the
-// method is not invoked, but the return value of the method is
-// ignored.
-func (o *QObject) invoke(methodName string, inArgs ...interface{}) error {
+// method cannot be invoked.
+//
+// The method's output is returned as an []interface{}. If the last or
+// only return type is exactly `error`, it will be removed from the
+// values and returned as an error from invoke(). This allows go-style
+// errors to be seen as errors by the client without manually checking
+// return values.
+func (o *QObject) invoke(methodName string, inArgs ...interface{}) ([]interface{}, error) {
 	if _, exists := o.typeInfo.Methods[methodName]; !exists {
-		return errors.New("method does not exist")
+		return nil, errors.New("method does not exist")
 	}
 
 	// Reflect to find a method named methodName on object
 	dataValue := reflect.ValueOf(o.object)
 	method := typeMethodValueByName(dataValue, methodName)
 	if !method.IsValid() {
-		return errors.New("method does not exist")
+		return nil, errors.New("method does not exist")
 	}
 	methodType := method.Type()
 
@@ -309,7 +314,7 @@ func (o *QObject) invoke(methodName string, inArgs ...interface{}) error {
 	callArgs := make([]reflect.Value, methodType.NumIn())
 
 	if len(inArgs) != methodType.NumIn() {
-		return fmt.Errorf("wrong number of arguments for %s; expected %d, provided %d",
+		return nil, fmt.Errorf("wrong number of arguments for %s; expected %d, provided %d",
 			methodName, methodType.NumIn(), len(inArgs))
 	}
 
@@ -326,14 +331,14 @@ func (o *QObject) invoke(methodName string, inArgs ...interface{}) error {
 				objV = objV.Elem()
 			}
 			if objV.Kind() != reflect.String || objV.String() != "object" {
-				return fmt.Errorf("qobject argument %d is malformed; object tag is incorrect", i)
+				return nil, fmt.Errorf("qobject argument %d is malformed; object tag is incorrect", i)
 			}
 			objV = inArgValue.MapIndex(reflect.ValueOf("identifier"))
 			if objV.Kind() == reflect.Interface {
 				objV = objV.Elem()
 			}
 			if objV.Kind() != reflect.String {
-				return fmt.Errorf("qobject argument %d is malformed; invalid identifier %v", i, objV)
+				return nil, fmt.Errorf("qobject argument %d is malformed; invalid identifier %v", i, objV)
 			}
 
 			// Will be nil if the object does not exist
@@ -366,7 +371,7 @@ func (o *QObject) invoke(methodName string, inArgs ...interface{}) error {
 			if umArg != nil {
 				err := umArg.UnmarshalText([]byte(inArg.(string)))
 				if err != nil {
-					return fmt.Errorf("wrong type for argument %d to %s; expected %s, unmarshal failed: %s",
+					return nil, fmt.Errorf("wrong type for argument %d to %s; expected %s, unmarshal failed: %s",
 						i, methodName, argType.String(), err)
 				}
 			}
@@ -375,7 +380,7 @@ func (o *QObject) invoke(methodName string, inArgs ...interface{}) error {
 		if callArg.IsValid() {
 			callArgs[i] = callArg
 		} else {
-			return fmt.Errorf("wrong type for argument %d to %s; expected %s, provided %s",
+			return nil, fmt.Errorf("wrong type for argument %d to %s; expected %s, provided %s",
 				i, methodName, argType.String(), inArgValue.Type().String())
 		}
 	}
@@ -383,15 +388,23 @@ func (o *QObject) invoke(methodName string, inArgs ...interface{}) error {
 	// Call the method
 	returnValues := method.Call(callArgs)
 
-	// If any of method's return values is an error, return that
-	errType := reflect.TypeOf((*error)(nil)).Elem()
-	for _, value := range returnValues {
-		if value.Type().Implements(errType) {
-			return value.Interface().(error)
+	var err error
+	if len(returnValues) > 0 {
+		last := len(returnValues) - 1
+		if methodType.Out(last) == errorType {
+			err, _ = returnValues[last].Interface().(error)
+			returnValues = returnValues[:last]
 		}
 	}
 
-	return nil
+	re := make([]interface{}, len(returnValues))
+	for i, v := range returnValues {
+		re[i] = v.Interface()
+		// The return value could contain a QObject that hasn't been initialized yet,
+		// so scan for objects on each value
+		o.initObjectsUnder(v)
+	}
+	return re, err
 }
 
 // Emit emits the named signal asynchronously. The signal must be
