@@ -25,6 +25,9 @@ public:
 
     // Called when a method is invoked on this object
     virtual void methodInvoked(const QString& method, const QJsonArray& params) = 0;
+
+    // Called with the return value from a previously invoked method
+    virtual void methodReturned(const QByteArray& returnId, const QJsonValue& value, bool isError) = 0;
 };
 
 class QBackendConnection : public QObject, public QQmlParserStatus
@@ -54,7 +57,8 @@ public:
 
     void registerTypes(const char *uri);
 
-    void invokeMethod(const QByteArray& identifier, const QString& method, const QJsonArray& params);
+    void invokeMethod(const QByteArray& objectIdentifier, const QString& method, const QJsonArray& params);
+    QByteArray invokeMethodWithReturn(const QByteArray& objectIdentifier, const QString& method, const QJsonArray& params);
     void addObjectProxy(const QByteArray& identifier, QBackendRemoteObject* object);
     void addObjectInstantiated(const QString &typeName, const QByteArray& identifier, QBackendRemoteObject* object);
     void removeObject(const QByteArray& identifier, QBackendRemoteObject *object);

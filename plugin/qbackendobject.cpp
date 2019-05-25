@@ -14,6 +14,7 @@
 #include "qbackendobject.h"
 #include "qbackendobject_p.h"
 #include "qbackendconnection.h"
+#include "promise.h"
 
 Q_LOGGING_CATEGORY(lcObject, "backend.object")
 
@@ -109,6 +110,8 @@ BackendObjectPrivate::~BackendObjectPrivate()
         }
     }
     m_connection->removeObject(m_identifier, this);
+    for (auto p : m_promises)
+        delete p;
 }
 
 void BackendObjectPrivate::objectFound(const QJsonObject &object)
@@ -148,6 +151,31 @@ void BackendObjectPrivate::methodInvoked(const QString &name, const QJsonArray &
 
         break;
     }
+}
+
+void BackendObjectPrivate::methodReturned(const QByteArray& returnId, const QJsonValue& value, bool isError)
+{
+    auto promise = m_promises.take(returnId);
+    if (!promise)
+        return;
+
+    if (isError) {
+        promise->reject(jsonValueToJSValue(m_connection->qmlEngine(), value));
+    } else {
+        // Unwrap the return values array if appropriate
+        QJsonValue rv = value;
+        QJsonArray values = rv.toArray();
+        if (values.count() == 0) {
+            rv = QJsonValue();
+        } else if (values.count() == 1) {
+            rv = values[0];
+        }
+        promise->resolve(jsonValueToJSValue(m_connection->qmlEngine(), rv));
+    }
+
+    // This object wraps the JS Promise object. QML never interacts with
+    // the wrapper, so it's safe to delete immediately.
+    delete promise;
 }
 
 void BackendObjectPrivate::classBegin()
@@ -286,7 +314,16 @@ int BackendObjectPrivate::metacall(QMetaObject::Call c, int id, void **argv)
                 }
             }
 
-            m_connection->invokeMethod(m_identifier, QString::fromUtf8(method.name()), args);
+            if (method.returnType() != QMetaType::Void && argv[0]) {
+                Q_ASSERT(method.returnType() == qMetaTypeId<QJSValue>());
+                Promise *p = new Promise(m_connection->qmlEngine());
+                *reinterpret_cast<QJSValue*>(argv[0]) = std::move(p->value());
+
+                auto returnId = m_connection->invokeMethodWithReturn(m_identifier, QString::fromUtf8(method.name()), args);
+                m_promises.insert(returnId, p);
+            } else {
+                m_connection->invokeMethod(m_identifier, QString::fromUtf8(method.name()), args);
+            }
         }
 
         id -= count;
@@ -465,7 +502,7 @@ std::pair<QString,QString> qtTypesFromType(const QString &type)
  *     "id": { "type": "int", "readonly": true }
  *   },
  *   "methods": {
- *     "greet": [ "string", "bool" ]
+ *     "greet": { "args": [ "string", "bool" ], "return": [ "string" ] }
  *   },
  *   "signals": {
  *     "died": [ "string", "int" ]
@@ -546,20 +583,36 @@ QMetaObject *metaObjectFromType(const QJsonObject &type, const QMetaObject *supe
 
     QJsonObject methods = type.value("methods").toObject();
     for (auto it = methods.constBegin(); it != methods.constEnd(); it++) {
+        QJsonObject info = it.value().toObject();
         QString name = it.key();
         QString signature = name + "(";
-        QJsonArray paramTypes = it.value().toArray();
-        for (const QJsonValue &type : paramTypes) {
+        for (const QJsonValue &type : info.value("args").toArray()) {
             signature += qtTypesFromType(type.toString()).first + ",";
         }
         if (signature.endsWith(",")) {
             signature.chop(1);
         }
         signature += ")";
-        qCDebug(lcObject) << " -- method:" << name << signature;
-        b.addMethod(signature.toUtf8());
 
-        if (name.startsWith("set") && paramTypes.size() == 1) {
+        if (lcObject().isDebugEnabled()) {
+            QStringList rv;
+            for (const auto &v : info.value("return").toArray()) {
+                rv.append(qtTypesFromType(v.toString()).first);
+            }
+            if (!rv.isEmpty()) {
+                qCDebug(lcObject) << " -- method:" << name << signature << "return:" << rv.join(", ");
+            } else {
+                qCDebug(lcObject) << " -- method:" << name << signature;
+            }
+        }
+
+        auto m = b.addMethod(signature.toUtf8());
+        // Return promises from all methods, even if there is no explicit return value.
+        // They may still return errors and this provides a maybe-useful way to tell
+        // when a call has finished.
+        m.setReturnType("QJSValue");
+
+        if (name.startsWith("set") && info.value("args").toArray().count() == 1) {
             QString propName = name.mid(3);
             if (!propName.isEmpty()) {
                 propName[0] = propName[0].toLower();

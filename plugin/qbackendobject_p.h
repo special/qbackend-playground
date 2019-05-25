@@ -6,6 +6,8 @@
 #include <QJSValue>
 #include "qbackendconnection.h"
 
+class Promise;
+
 class BackendObjectPrivate : public QBackendRemoteObject
 {
     Q_OBJECT
@@ -21,6 +23,8 @@ public:
     bool m_dataReady = false;
     bool m_waitingForData = false;
 
+    QHash<QByteArray,Promise*> m_promises;
+
     BackendObjectPrivate(QObject *object, QBackendConnection *connection, const QByteArray &identifier);
     BackendObjectPrivate(const char *typeName, QObject *object, QBackendConnection *connection);
     virtual ~BackendObjectPrivate();
@@ -28,6 +32,7 @@ public:
     QObject *object() const override { return m_object; }
     void objectFound(const QJsonObject& object) override;
     void methodInvoked(const QString& method, const QJsonArray& params) override;
+    void methodReturned(const QByteArray& returnId, const QJsonValue& value, bool isError) override;
     void resetData(const QJsonObject &data);
 
     int metacall(QMetaObject::Call c, int id, void **argv);

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+
 	"github.com/CrimsonAS/qbackend/backend"
 	"github.com/CrimsonAS/qbackend/backend/qmlscene"
 )
@@ -43,16 +45,20 @@ func (this *PersonModel) RoleNames() []string {
 	}
 }
 
-func (this *PersonModel) AddPerson() {
+func (this *PersonModel) AddPerson(firstName, lastName string) (*Person, error) {
 	desiredAge := 0
 	if len(this.people) > 0 {
 		desiredAge = this.people[len(this.people)-1].Age + 1
 	}
-	p := &Person{FirstName: "John", LastName: "Brooks", Age: desiredAge}
+	if firstName == "" || lastName == "" {
+		return nil, errors.New("missing first/last name for new person")
+	}
+	p := &Person{FirstName: firstName, LastName: lastName, Age: desiredAge}
 	this.people = append(this.people, p)
 	this.Inserted(len(this.people)-1, 1)
 	this.Count = len(this.people)
 	this.Changed("Count")
+	return p, nil
 }
 
 func (this *PersonModel) RemovePerson(idx int) {

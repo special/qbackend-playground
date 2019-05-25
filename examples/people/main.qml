@@ -110,13 +110,36 @@ Window {
         width: parent.width
 
         Button {
+            id: addButton
             height: implicitHeight * 2
             width: parent.width
             text: "Add"
             onClicked: {
-                personModel.addPerson()
+                // Calls the AddPerson method of the Go PersonModel. This returns a Promise,
+                // and asynchronously the return values/error from that method.
+                personModel.addPerson(randomName(), randomName()).then(
+                    person => {
+                        console.log("Added a new person", person.firstName, person.lastName,
+                                    "of", person.age, "years old")
+                    },
+                    error => {
+                        // Try adding a person with an empty name
+                        console.warn("Error adding a person:", error)
+                    }
+                )
             }
         }
+    }
+
+    function randomName() {
+        var names = [ "Shackleford", "Quinn", "Declan", "Holden Rosen", "Dar", "Sky",
+                      "Taggart", "Dallas", "Colby", "Wheaton", "Tanner", "Corson",
+                      "Kadin", "Whitten", "Conn", "Gaige", "Raines", "Hampton",
+                      "Stanwick", "Commandant", "Smartwood", "Stucker", "Grupp",
+                      "Sleeper", "Dupree", "Eymer", "Creamer", "Hamwey", "Jackoboice",
+                      "Elwood", "Kealey", "Kightlinger", "McCune", "Curry", "Barber",
+                      "Shamburger", "Brannon" ]
+        return names[~~(names.length * Math.random())]
     }
 }
 

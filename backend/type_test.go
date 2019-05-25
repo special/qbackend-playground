@@ -32,6 +32,10 @@ type TestStruct struct {
 	SignalParams func(a, b int) `qbackend:"a,b"`
 }
 
+func (t *TestStruct) RealMethod(arg1 int, arg2 []string) (*TestStruct, error) {
+	return t, nil
+}
+
 func TestParseTypes(t *testing.T) {
 	obj := &TestStruct{}
 	objType := reflect.TypeOf(*obj)
@@ -43,7 +47,7 @@ func TestParseTypes(t *testing.T) {
 	t.Logf("parsed type: %s", info)
 
 	expectProp := []string{"string", "bytes", "strings", "map", "struct", "ptr", "object", "interface"}
-	expectMethod := []string{}
+	expectMethod := []string{"realMethod"}
 	expectSignal := []string{"signal", "signalParams"}
 
 	for _, p := range expectProp {
@@ -64,6 +68,16 @@ func TestParseTypes(t *testing.T) {
 	}
 	if len(expectMethod) != len(info.Methods) {
 		t.Errorf("Expected %d methods but type info has %d", len(expectMethod), len(info.Methods))
+	}
+	if m, ok := info.Methods["realMethod"]; ok {
+		if len(m.Args) != 2 {
+			t.Errorf("Method expected %d args but has %d: %v", 2, len(m.Args), m.Args)
+		}
+		if len(m.Return) != 2 {
+			t.Errorf("Method expected %d return values but has %d: %v", 2, len(m.Return), m.Return)
+		}
+	} else {
+		t.Errorf("Missing method 'realMethod'")
 	}
 
 	for _, p := range expectSignal {
